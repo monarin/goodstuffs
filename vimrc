@@ -5,6 +5,5 @@ set tabstop=2
 set shiftwidth=2
 " On pressing tab, insert 2 spaces 
 set expandtab
-" No indent symbol
-map ( :set ai
-map ) :set noai
+" No indent when paste
+set pastetoggle=<F3>
