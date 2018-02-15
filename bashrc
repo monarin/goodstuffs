@@ -11,6 +11,34 @@ alias cori="ssh -Y monarin@cori.nersc.gov"
 alias ll='ls -l'
 alias delpyc="find . -name \"*. pyc\" -delete"
 
+alias now='date "+%Y-%m-%d+%H%M%S"'
+
+vman() {
+    man "$@" | col -b | vi -R -
+}
+
+sve() {
+    DESTPATH="${HOME}/Save/$@_`now`"
+    echo "Saved to $DESTPATH"
+    cp -a $@ $DESTPATH
+}
+
+gdbpy() {
+    gdb `which python`
+}
+
+setuppsana() {
+    cd "$HOME/lcls2/psana"
+    INSTDIR="$HOME/lcls2/install"
+    python setup.py develop --xtcdata=$INSTDIR --prefix=$INSTDIR
+    cd -
+}
+
+genpsdata() {
+    $HOME/lcls2/xtcdata/build/xtcdata/xtcwriter
+    $HOME/lcls2/xtcdata/build/xtcdata/smdwriter -f data.xtc
+}
+
 export EDITOR=vim
 export GIT_EDITOR=vim
 
