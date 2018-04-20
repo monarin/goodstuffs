@@ -28,26 +28,41 @@ gdbpy() {
 }
 
 setuppsana() {
-    cd "$HOME/lcls2/psana"
-    INSTDIR="$HOME/lcls2/install"
+    mypath $1
+    cd "$MYPATH/lcls2/psana"
+    INSTDIR="$MYPATH/lcls2/install"
     python setup.py develop --xtcdata=$INSTDIR --prefix=$INSTDIR
     cd -
 }
 
-setuppsana_python2() {
-    cd "$HOME/tmp/lcls2/psana"
-    INSTDIR="$HOME/tmp/lcls2/install"
-    python setup.py develop --xtcdata=$INSTDIR --prefix=$INSTDIR
-    cd -
+mypath() {
+    MYPATH=$HOME
+    if [ "$1" != '' ]; then
+        MYPATH=$@
+    fi
 }
 
 genpsdata() {
-    $HOME/lcls2/xtcdata/build/xtcdata/xtcwriter
-    $HOME/lcls2/xtcdata/build/xtcdata/smdwriter -f data.xtc
+    mypath $1
+    $MYPATH/lcls2/xtcdata/build/xtcdata/xtcwriter
+    $MYPATH/lcls2/xtcdata/build/xtcdata/smdwriter -f data.xtc
 }
 
 gccthis() {
     gcc -pthread -B /reg/g/psdm/sw/conda2/inst/envs/ps-0.0.6/compiler_compat -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -Wstrict-prototypes -fPIC -I/reg/g/psdm/sw/conda2/inst/envs/ps-0.0.6/lib/python3.5/site-packages/numpy/core/include -I/reg/neh/home/monarin/lcls2/install/include -I/reg/g/psdm/sw/conda2/inst/envs/ps-0.0.6/include/python3.5m -c ringbuf.cc -o ringbuf -std=c++11
+}
+
+prof_py() {
+    python -m cProfile -s tottime $1
+}
+
+prof_strace_py() {
+    strace -ttt -f -o $$.log python $1
+}
+
+prof_perf_py() {
+    perf record python $1
+    echo "run perf report to see results"
 }
 
 export EDITOR=vim
