@@ -7,6 +7,8 @@ alias psdev="ssh -YAC monarin@psdev.slac.stanford.edu"
 alias atbfs3="ssh monarin@atbfs3.stanford.edu"
 alias moje="ssh mojeprot@mojeprotocol.com"
 alias cori="ssh -Y monarin@cori.nersc.gov"
+alias oakr="ssh monarin@home.ccs.ornl.gov"
+alias smdev="ssh monarin@summitdev.ccs.ornl.gov"
 
 alias ll='ls -l'
 alias delpyc="find . -name \"*. pyc\" -delete"
@@ -96,19 +98,6 @@ export GIT_PS1_SHOWDIRTYSTATE=1
 # '\W' adds the name of the current directory
 export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $ $reset"
 
-alias subl="/Applications/Sublime\ Text.app/Contents/SharedSupport/bin/subl"
-
-# The next line updates PATH for the Google Cloud SDK.
-if [ -f /Users/monarin/Documents/google-cloud-sdk/path.bash.inc ]; then
-  source '/Users/monarin/Documents/google-cloud-sdk/path.bash.inc'
-fi
-
-# The next line enables shell command completion for gcloud.
-if [ -f /Users/monarin/Documents/google-cloud-sdk/completion.bash.inc ]; then
-  source '/Users/monarin/Documents/google-cloud-sdk/completion.bash.inc'
-fi
-
-# added by Anaconda2 4.2.0 installer
-if [ -d "/Users/monarin/anaconda/bin" ]; then
-  export PATH="/Users/monarin/anaconda/bin:$PATH"
-fi
+smdev_its() {
+    bsub -P CHM137 -XF -nnodes 1 -W ${1} -Is $SHELL
+}
