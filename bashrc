@@ -31,7 +31,7 @@ setuppsana() {
     mypath $1
     cd "$MYPATH/lcls2/psana"
     INSTDIR="$MYPATH/lcls2/install"
-    python setup.py develop --xtcdata=$INSTDIR --prefix=$INSTDIR
+    python setup.py install --xtcdata=$INSTDIR --prefix=$INSTDIR
     cd -
 }
 
@@ -44,8 +44,8 @@ mypath() {
 
 genpsdata() {
     mypath $1
-    $MYPATH/lcls2/xtcdata/build/xtcdata/xtcwriter
-    $MYPATH/lcls2/xtcdata/build/xtcdata/smdwriter -f data.xtc
+    $MYPATH/lcls2/install/bin/xtcwriter
+    $MYPATH/lcls2/install/bin/smdwriter -f data.xtc
 }
 
 gccthis() {
@@ -63,6 +63,16 @@ prof_strace_py() {
 prof_perf_py() {
     perf record python $1
     echo "run perf report to see results"
+}
+
+pyver() {
+    pyver=$(python -c "import sys; print(str(sys.version_info.major)+'.'+str(sys.version_info.minor))")
+    echo $pyver
+}
+
+slac_proxy(){
+    export http_proxy="http://psproxy:3128"
+    export https_proxy="https://psproxy:3128"
 }
 
 export EDITOR=vim
