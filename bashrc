@@ -101,3 +101,18 @@ export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $ $reset"
 smdev_its() {
     bsub -P CHM137 -XF -nnodes 1 -W ${1} -Is $SHELL
 }
+
+ns_gen24() {
+    cd ~/NERSC-MFA
+    git pull
+    ./sshproxy.sh
+    ssh -i ~/.ssh/nersc cori.nersc.gov
+}
+
+ns_chk24() {
+    ssh-keygen -L -f ~/.ssh/nersc-cert.pub | grep Valid
+}
+
+ns_mfa() {
+    ssh -i ~/.ssh/nersc cori.nersc.gov
+}
