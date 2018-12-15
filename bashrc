@@ -34,6 +34,7 @@ setuppsana() {
     cd "$MYPATH/lcls2/psana"
     INSTDIR="$MYPATH/lcls2/install"
     python setup.py install --xtcdata=$INSTDIR --prefix=$INSTDIR
+    python setup.py install --xtcdata=$INSTDIR --prefix=$INSTDIR
     cd -
 }
 
@@ -115,4 +116,17 @@ ns_chk24() {
 
 ns_mfa() {
     ssh -i ~/.ssh/nersc cori.nersc.gov
+}
+
+grr() {
+  # -I ignores binary files
+  grep -I --exclude \*.class --exclude \*.pyc --exclude-dir .git --exclude-dir .svn -r "$@"
+}
+
+cutniq() {
+  grep -v 'Binary file' | cut -d: -f1 | uniq
+}
+
+mpirunfull() {
+  /reg/common/package/openmpi/4.0.0-rhel7/bin/mpirun --mca btl_openib_allow_ib 1 $@
 }
