@@ -103,9 +103,13 @@ smdev_its() {
     bsub -P CHM137 -XF -nnodes 1 -W ${1} -Is $SHELL
 }
 
+ns_init() {
+    mkdir ~/NERSC-MFA
+    scp monarin@dtn01.nersc.gov:/project/projectdirs/mfa/NERSC-MFA/sshproxy.sh ~/NERSC-MFA
+}
+
 ns_gen24() {
     cd ~/NERSC-MFA
-    git pull
     ./sshproxy.sh
     ssh -i ~/.ssh/nersc cori.nersc.gov
 }
