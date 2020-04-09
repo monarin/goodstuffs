@@ -146,3 +146,38 @@ sb() {
 sd() {
     ssh psdev
 }
+
+oss() {
+  source $HOME/lcls2/setup_env.sh
+  export PATH=/opt/openspeedshop/bin:$PATH
+  export LD_LIBRARY_PATH=/opt/openspeedshop/lib64:$LD_LIBRARY_PATH
+}
+
+set_tau() {
+  #export TAU_MAKEFILE=/reg/neh/home/monarin/tau-2.28/x86_64/lib/Makefile.tau-mpi
+  export TAU_MAKEFILE=/reg/neh/home/monarin/tau-2.28/x86_64/lib/Makefile.tau-ompt-mpi-pdt-openmp
+  export PATH=/reg/neh/home/monarin/tau-2.28/x86_64/bin:$PATH
+}
+
+set_proxy() {
+export http_proxy="http://psproxy:3128"
+export https_proxy="https://psproxy:3128"
+export ftp_proxy="http://psproxy:3128"
+}
+
+see_disk_quota() {
+    df -h | grep monarin
+} 
+
+see_kerberos_cred() {
+    klist
+}
+
+git_aa() {
+    mod_files=($(git status | grep modified: | awk '{ print $3}'))
+    length=${#mod_files[@]}
+    for ((i=0; i<length; i++)); do
+        echo "adding $i: '${mod_files[i]}'"
+        git add ${mod_files[i]}
+    done
+}
