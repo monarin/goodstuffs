@@ -123,14 +123,26 @@ ns_mfa() {
 }
 
 grr() {
-  # -I ignores binary files
-  grep -I --exclude \*.class --exclude \*.pyc --exclude-dir .git --exclude-dir .svn -r "$@"
+    # -I ignores binary files
+    grep -I --exclude \*.class --exclude \*.pyc --exclude-dir .git --exclude-dir .svn -r "$@"
 }
 
 cutniq() {
-  grep -v 'Binary file' | cut -d: -f1 | uniq
+    grep -v 'Binary file' | cut -d: -f1 | uniq
 }
 
 mpirunfull() {
-  /reg/common/package/openmpi/4.0.0-rhel7/bin/mpirun --mca btl_openib_allow_ib 1 $@
+    /reg/common/package/openmpi/4.0.0-rhel7/bin/mpirun --mca btl_openib_allow_ib 1 $@
+}
+
+sl() {
+    ./auto_pslogin.sh
+}
+
+sb() {
+    ssh psbuild-rhel7
+}
+
+sd() {
+    ssh psdev
 }
