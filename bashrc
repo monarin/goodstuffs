@@ -136,7 +136,7 @@ mpirunfull() {
 }
 
 sl() {
-    ./auto_pslogin.sh
+    ~/.auto_pslogin.sh
 }
 
 sb() {
