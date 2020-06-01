@@ -176,9 +176,12 @@ see_kerberos_cred() {
 git_aa() {
     mod_files=($(git status | grep modified: | awk '{ print $3}'))
     length=${#mod_files[@]}
-    for ((i=0; i<length; i++)); do
+    for ((i=0; i<length; i++))
+    do
         echo "adding $i: '${mod_files[i]}'"
         git add ${mod_files[i]}
+    done
+}
 
 docker_clean() {
     arr=( $(docker images | grep "<none>" | gawk '{ print $3 }') )
