@@ -7,7 +7,7 @@ alias psdev="ssh -YAC monarin@psdev.slac.stanford.edu"
 alias atbfs3="ssh monarin@atbfs3.stanford.edu"
 alias moje="ssh mojeprot@mojeprotocol.com"
 alias cori="ssh -Y monarin@cori.nersc.gov"
-alias oakr="ssh monarin@home.ccs.ornl.gov"
+alias oakr="ssh -YAC monarin@home.ccs.ornl.gov"
 alias smdev="ssh monarin@summitdev.ccs.ornl.gov"
 
 alias ll='ls -l'
@@ -179,5 +179,12 @@ git_aa() {
     for ((i=0; i<length; i++)); do
         echo "adding $i: '${mod_files[i]}'"
         git add ${mod_files[i]}
+
+docker_clean() {
+    arr=( $(docker images | grep "<none>" | gawk '{ print $3 }') )
+    for imgid in ${arr[*]}
+    do
+        printf "remove   %s\n" $imgid
+        docker rmi -f $imgid
     done
 }
