@@ -174,7 +174,7 @@ see_kerberos_cred() {
 }
 
 git_aa() {
-    mod_files=($(git status | grep modified: | awk '{ print $3}'))
+    mod_files=($(git status | grep modified: | gawk '{ print $2}'))
     length=${#mod_files[@]}
     for ((i=0; i<length; i++))
     do
