@@ -1,4 +1,9 @@
+# ***DO THIS ON NEW MACHINE***
+# cd $HOME
+# git clone https://github.com/monarin/goodstuffs
+# In system bashrc, add
 # [ -f "$HOME/goodstuffs/bashrc" ] && . "$HOME/goodstuffs/bashrc"
+# [ -f "$HOME/goodstuffs/bashrc_history" ] && . "$HOME/goodstuffs/bashrc_history"
 
 alias viper="ssh -YAC mu238@viper.lbl.gov"
 alias dials="ssh -YAC mu238@dials.lbl.gov"
