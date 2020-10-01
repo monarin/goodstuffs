@@ -105,7 +105,19 @@ export GIT_PS1_SHOWDIRTYSTATE=1
 export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $ $reset"
 
 smdev_its() {
-    bsub -P CHM137 -XF -nnodes 1 -W ${1} -Is $SHELL
+    bsub -W 0:30 -nnodes 1 -P chm137 -alloc_flags "gpumps" -Is /bin/bash
+}
+
+export SMSCRATCH="/lustre/atlas/scratch/monarin/chm137"
+export SMPROJSCRATCH="/lustre/atlas/proj-shared/chm137"
+
+# specific to OAKRIDGE Summit
+sm_showusage() {
+    showusage -f
+}
+
+sm_jobstat() {
+    jobstat -u $USER
 }
 
 ns_init() {
