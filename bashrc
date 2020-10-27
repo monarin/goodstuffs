@@ -208,3 +208,26 @@ docker_clean() {
         docker rmi -f $imgid
     done
 }
+
+rm_swp() {
+    arr=( $(find . -name "*.swp") )
+    for fname in ${arr[*]}
+    do
+        printf "remove %s\n" $fname
+        rm $fname
+    done
+}
+
+sve_git_aa() {
+    mod_files=($(git status | grep modified: | gawk '{ print $2}'))
+    length=${#mod_files[@]}
+    for ((i=0; i<length; i++))
+    do
+        f_basename="$(basename "${mod_files[i]}")"
+        f_dirname="$(dirname "${mod_files[i]}")"
+        echo "saving $i: '${mod_files[i]}' to ~/Save"
+        pushd $f_dirname
+            sve $f_basename
+        popd 
+    done
+}
