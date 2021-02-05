@@ -120,6 +120,11 @@ sm_jobstat() {
     jobstat -u $USER
 }
 
+sm_jsrun_visualizer() {
+    jsrun -n 2 -a 2 -c 2 -g 2 -r 1 -l CPU-CPU -d packed -b packed:1 js_task_info | sort
+}
+
+
 ns_init() {
     mkdir ~/NERSC-MFA
     scp monarin@dtn01.nersc.gov:/project/projectdirs/mfa/NERSC-MFA/sshproxy.sh ~/NERSC-MFA
@@ -200,6 +205,10 @@ git_aa() {
     done
 }
 
+git_set_remote_ssh() {
+    git remote set-url origin git@github.com:monarin/$1.git
+}
+
 docker_clean() {
     arr=( $(docker images | grep "<none>" | gawk '{ print $3 }') )
     for imgid in ${arr[*]}
@@ -219,7 +228,7 @@ rm_swp() {
 }
 
 sve_git_aa() {
-    mod_files=($(git status | grep modified: | gawk '{ print $2}'))
+    mod_files=($(git status | grep modified: | gawk '{ print $3}'))
     length=${#mod_files[@]}
     for ((i=0; i<length; i++))
     do
@@ -231,3 +240,5 @@ sve_git_aa() {
         popd 
     done
 }
+
+
