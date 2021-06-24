@@ -11,4 +11,6 @@ set pastetoggle=<F3>
 " with sticky setting see
 " https://superuser.com/questions/271023/can-i-disable-continuation-of-comments-to-the-next-line-in-vim
 autocmd BufNewFile,BufRead * setlocal formatoptions-=cro
+" set color scheme
+colorscheme desert
 
