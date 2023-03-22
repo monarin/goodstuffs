@@ -14,6 +14,9 @@ alias moje="ssh mojeprot@mojeprotocol.com"
 alias cori="ssh -Y monarin@cori.nersc.gov"
 alias oakr="ssh -YAC monarin@home.ccs.ornl.gov"
 alias smdev="ssh monarin@summitdev.ccs.ornl.gov"
+alias s3df="ssh s3dflogin.slac.stanford.edu"
+alias frontier="ssh monarin@frontier.olcf.ornl.gov"
+
 
 alias ll='ls -l'
 alias delpyc="find . -name \"*. pyc\" -delete"
