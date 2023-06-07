@@ -16,7 +16,11 @@ alias oakr="ssh -YAC monarin@home.ccs.ornl.gov"
 alias smdev="ssh monarin@summitdev.ccs.ornl.gov"
 alias s3df="ssh s3dflogin.slac.stanford.edu"
 alias frontier="ssh monarin@frontier.olcf.ornl.gov"
-
+alias ascent="ssh monarin@login1.ascent.olcf.ornl.gov"
+alias perlmutter="ssh monarin@perlmutter-p1.nersc.gov"
+alias tmodaq="ssh -YC tmo-daq -l tmoopr"
+alias rixdaq="ssh -YC rix-daq -l rixopr"
+alias frontier="ssh -YAC monarin@frontier.olcf.ornl.gov"
 
 alias ll='ls -l'
 alias delpyc="find . -name \"*. pyc\" -delete"
@@ -105,7 +109,8 @@ export GIT_PS1_SHOWDIRTYSTATE=1
 # '\u' adds the name of the current user to the prompt
 # '\$(__git_ps1)' adds git-related stuff
 # '\W' adds the name of the current directory
-export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $ $reset"
+myprompt="👁)$"
+export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $myprompt $reset"
 
 smdev_its() {
     bsub -W 0:30 -nnodes 1 -P chm137 -alloc_flags "gpumps" -Is /bin/bash
@@ -244,4 +249,34 @@ sve_git_aa() {
     done
 }
 
+myclang-format() {
+    ${HOME}/sw/clang+llvm-13.0.0/bin/clang-format "$@"
+}
 
+psana1() {
+    source /reg/g/psdm/etc/psconda.sh
+    conda activate ana-4.0.36-py3
+    export PYTHONPATH=$HOME/xtc1to2/:$PYTHONPATH
+    cd $HOME/xtc1to2/examples/
+}
+
+psana2() {
+    source $HOME/lcls2/setup_env.sh
+    export PYTHONPATH=$HOME/xtc1to2/:$PYTHONPATH
+    cd $HOME/xtc1to2/examples/
+}
+
+psana2_cc() {
+    source $HOME/lcls2/setup_env.sh
+    cd $HOME/lcls2
+    export INSTDIR=$PWD/install
+    cd psana
+}
+
+vimthese() {
+    vim -p "$@"
+}
+
+lstoday() {
+    ls "$@" -al --time-style=+%D | grep $(date +%D)
+}
