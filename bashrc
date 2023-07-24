@@ -16,11 +16,11 @@ alias oakr="ssh -YAC monarin@home.ccs.ornl.gov"
 alias smdev="ssh monarin@summitdev.ccs.ornl.gov"
 alias s3df="ssh s3dflogin.slac.stanford.edu"
 alias frontier="ssh monarin@frontier.olcf.ornl.gov"
+alias crusher="ssh monarin@crusher.olcf.ornl.gov"
 alias ascent="ssh monarin@login1.ascent.olcf.ornl.gov"
 alias perlmutter="ssh monarin@perlmutter-p1.nersc.gov"
 alias tmodaq="ssh -YC tmo-daq -l tmoopr"
 alias rixdaq="ssh -YC rix-daq -l rixopr"
-alias frontier="ssh -YAC monarin@frontier.olcf.ornl.gov"
 
 alias ll='ls -l'
 alias delpyc="find . -name \"*. pyc\" -delete"
@@ -109,8 +109,8 @@ export GIT_PS1_SHOWDIRTYSTATE=1
 # '\u' adds the name of the current user to the prompt
 # '\$(__git_ps1)' adds git-related stuff
 # '\W' adds the name of the current directory
-myprompt="👁)$"
-export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $myprompt $reset"
+myprompt=""
+export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $myprompt$reset"
 
 smdev_its() {
     bsub -W 0:30 -nnodes 1 -P chm137 -alloc_flags "gpumps" -Is /bin/bash
@@ -279,4 +279,12 @@ vimthese() {
 
 lstoday() {
     ls "$@" -al --time-style=+%D | grep $(date +%D)
+}
+
+rixdaqlog() {
+    user="rixopr"
+    filename="control.log";
+    filepath="/cds/home/opr/$user/$(date +"%Y/%m/%d")*$filename"
+    thisfile=$(ls $filepath -lt | head -n 1 | gawk '{ print $9}')
+    vim $thisfile
 }
