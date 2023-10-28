@@ -21,6 +21,8 @@ alias ascent="ssh monarin@login1.ascent.olcf.ornl.gov"
 alias perlmutter="ssh monarin@perlmutter-p1.nersc.gov"
 alias tmodaq="ssh -YC tmo-daq -l tmoopr"
 alias rixdaq="ssh -YC rix-daq -l rixopr"
+alias mcclogin="ssh mcclogin.slac.stanford.edu"
+alias lclssrv="ssh acclegr@lcls-srv01"
 
 alias ll='ls -l'
 alias delpyc="find . -name \"*. pyc\" -delete"
@@ -198,6 +200,10 @@ export ftp_proxy="http://psproxy:3128"
 see_disk_quota() {
     df -h | grep monarin
 } 
+
+see_disk_quota2() {
+    fs lq
+}
 
 see_kerberos_cred() {
     klist
