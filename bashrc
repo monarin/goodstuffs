@@ -115,6 +115,10 @@ see_kerberos_cred() {
     klist
 }
 
+see_dir_total() {
+    du -shc ./*
+}
+
 git_aa() {
     mod_files=($(git status | grep modified: | gawk '{ print $2}'))
     length=${#mod_files[@]}
