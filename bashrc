@@ -43,26 +43,11 @@ gdbpy() {
     gdb `which python`
 }
 
-setuppsana() {
-    mypath $1
-    cd "$MYPATH/lcls2/psana"
-    INSTDIR="$MYPATH/lcls2/install"
-    python setup.py install --xtcdata=$INSTDIR --prefix=$INSTDIR
-    python setup.py install --xtcdata=$INSTDIR --prefix=$INSTDIR
-    cd -
-}
-
 mypath() {
     MYPATH=$HOME
     if [ "$1" != '' ]; then
         MYPATH=$@
     fi
-}
-
-genpsdata() {
-    mypath $1
-    $MYPATH/lcls2/install/bin/xtcwriter
-    $MYPATH/lcls2/install/bin/smdwriter -f data.xtc
 }
 
 gccthis() {
@@ -87,11 +72,6 @@ pyver() {
     echo $pyver
 }
 
-slac_proxy(){
-    export http_proxy="http://psproxy:3128"
-    export https_proxy="https://psproxy:3128"
-}
-
 export EDITOR=vim
 export GIT_EDITOR=vim
 
@@ -114,46 +94,6 @@ export GIT_PS1_SHOWDIRTYSTATE=1
 myprompt=""
 export PS1="$purple\u$cyan@\h$green\$(__git_ps1)$blue \W $myprompt$reset"
 
-smdev_its() {
-    bsub -W 0:30 -nnodes 1 -P chm137 -alloc_flags "gpumps" -Is /bin/bash
-}
-
-export SMSCRATCH="/lustre/atlas/scratch/monarin/chm137"
-export SMPROJSCRATCH="/lustre/atlas/proj-shared/chm137"
-
-# specific to OAKRIDGE Summit
-sm_showusage() {
-    showusage -f
-}
-
-sm_jobstat() {
-    jobstat -u $USER
-}
-
-sm_jsrun_visualizer() {
-    jsrun -n 2 -a 2 -c 2 -g 2 -r 1 -l CPU-CPU -d packed -b packed:1 js_task_info | sort
-}
-
-
-ns_init() {
-    mkdir ~/NERSC-MFA
-    scp monarin@dtn01.nersc.gov:/project/projectdirs/mfa/NERSC-MFA/sshproxy.sh ~/NERSC-MFA
-}
-
-ns_gen24() {
-    cd ~/NERSC-MFA
-    ./sshproxy.sh
-    ssh -i ~/.ssh/nersc cori.nersc.gov
-}
-
-ns_chk24() {
-    ssh-keygen -L -f ~/.ssh/nersc-cert.pub | grep Valid
-}
-
-ns_mfa() {
-    ssh -i ~/.ssh/nersc cori.nersc.gov
-}
-
 grr() {
     # -I ignores binary files
     grep -I --exclude \*.class --exclude \*.pyc --exclude-dir .git --exclude-dir .svn -r "$@"
@@ -161,40 +101,6 @@ grr() {
 
 cutniq() {
     grep -v 'Binary file' | cut -d: -f1 | uniq
-}
-
-mpirunfull() {
-    /reg/common/package/openmpi/4.0.0-rhel7/bin/mpirun --mca btl_openib_allow_ib 1 $@
-}
-
-sl() {
-    ~/.auto_pslogin.sh
-}
-
-sb() {
-    ssh psbuild-rhel7
-}
-
-sd() {
-    ssh psdev
-}
-
-oss() {
-  source $HOME/lcls2/setup_env.sh
-  export PATH=/opt/openspeedshop/bin:$PATH
-  export LD_LIBRARY_PATH=/opt/openspeedshop/lib64:$LD_LIBRARY_PATH
-}
-
-set_tau() {
-  #export TAU_MAKEFILE=/reg/neh/home/monarin/tau-2.28/x86_64/lib/Makefile.tau-mpi
-  export TAU_MAKEFILE=/reg/neh/home/monarin/tau-2.28/x86_64/lib/Makefile.tau-ompt-mpi-pdt-openmp
-  export PATH=/reg/neh/home/monarin/tau-2.28/x86_64/bin:$PATH
-}
-
-set_proxy() {
-export http_proxy="http://psproxy:3128"
-export https_proxy="https://psproxy:3128"
-export ftp_proxy="http://psproxy:3128"
 }
 
 see_disk_quota() {
@@ -255,42 +161,11 @@ sve_git_aa() {
     done
 }
 
-myclang-format() {
-    ${HOME}/sw/clang+llvm-13.0.0/bin/clang-format "$@"
-}
-
-psana1() {
-    source /reg/g/psdm/etc/psconda.sh
-    conda activate ana-4.0.36-py3
-    export PYTHONPATH=$HOME/xtc1to2/:$PYTHONPATH
-    cd $HOME/xtc1to2/examples/
-}
-
-psana2() {
-    source $HOME/lcls2/setup_env.sh
-    export PYTHONPATH=$HOME/xtc1to2/:$PYTHONPATH
-    cd $HOME/xtc1to2/examples/
-}
-
-psana2_cc() {
-    source $HOME/lcls2/setup_env.sh
-    cd $HOME/lcls2
-    export INSTDIR=$PWD/install
-    cd psana
-}
-
-vimthese() {
-    vim -p "$@"
-}
-
 lstoday() {
     ls "$@" -al --time-style=+%D | grep $(date +%D)
 }
 
-rixdaqlog() {
-    user="rixopr"
-    filename="control.log";
-    filepath="/cds/home/opr/$user/$(date +"%Y/%m/%d")*$filename"
-    thisfile=$(ls $filepath -lt | head -n 1 | gawk '{ print $9}')
-    vim $thisfile
+sacctj() {
+    sacct -j $1 --format=JobIDRaw,JobName%12,NodeList,Start,End,Elapsed,REQCPUS,ALLOCTRES%25
 }
+
