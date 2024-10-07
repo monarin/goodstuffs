@@ -173,3 +173,7 @@ sacctj() {
     sacct -j $1 --format=JobIDRaw,JobName%12,NodeList,Start,End,Elapsed,REQCPUS,ALLOCTRES%25
 }
 
+activate_pytorch(){
+    export PYTHONPATH=$PYTHONPATH:/sdf/scratch/users/m/monarin/sw
+}
+
