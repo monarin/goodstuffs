@@ -177,3 +177,15 @@ activate_pytorch(){
     export PYTHONPATH=$PYTHONPATH:/sdf/scratch/users/m/monarin/sw
 }
 
+psf() {
+    ps -p $1 -o pid,vsz=MEMORY -o user,group=GROUP -o cls,pri,rtprio -o comm,args=ARGS | cat
+}
+
+sinfof() {
+    sinfo -o "%30N  %10c  %10m  %35f  %10G "
+}
+
+sqf() {
+    squeue $@ -o "%.18i %15j %.8u %.8T %20S %.10M %.6D %R" 
+}
+>>>>>>> Stashed changes
