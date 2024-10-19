@@ -13,4 +13,5 @@ set pastetoggle=<F3>
 autocmd BufNewFile,BufRead * setlocal formatoptions-=cro
 " set color scheme
 colorscheme desert
-
+" show line-numbers
+set number

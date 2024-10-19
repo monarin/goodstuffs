@@ -29,6 +29,7 @@ alias delpyc="find . -name \"*. pyc\" -delete"
 
 alias now='date "+%Y-%m-%d+%H%M%S"'
 
+
 vman() {
     man "$@" | col -b | vi -R -
 }
@@ -188,4 +189,11 @@ sinfof() {
 sqf() {
     squeue $@ -o "%.18i %15j %.8u %.8T %20S %.10M %.6D %R" 
 }
->>>>>>> Stashed changes
+
+prc(){
+    isort "$@"
+    black "$@"
+    ruff check "$@"
+    flake8 "$@"
+}
+
