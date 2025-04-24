@@ -190,7 +190,27 @@ prc(){
     isort "$@"
     black "$@"
     ruff check "$@"
-    flake8 "$@"
+    #flake8 "$@"
+}
+
+open_latest_slurm() {
+    local file
+    file=$(ls -t slurm* 2>/dev/null | head -n 1)
+    if [[ -n "$file" ]]; then
+        vim "$file"
+    else
+        echo "No slurm* files found in the current directory." >&2
+    fi
+}
+
+tail_latest_slurm() {
+    local file
+    file=$(ls -t slurm* 2>/dev/null | head -n 1)
+    if [[ -n "$file" ]]; then
+        tail -f "$file"
+    else
+        echo "No slurm* files found in the current directory." >&2
+    fi
 }
 
 pip_who_needs() {
