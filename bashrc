@@ -105,12 +105,8 @@ cutniq() {
 }
 
 see_disk_quota() {
-    df -h | grep monarin
+    df -h $HOME
 } 
-
-see_disk_quota2() {
-    fs lq
-}
 
 see_kerberos_cred() {
     klist
@@ -195,5 +191,37 @@ prc(){
     black "$@"
     ruff check "$@"
     flake8 "$@"
+}
+
+pip_who_needs() {
+    if [ -z "$1" ]; then
+        echo "Usage: pip_who_needs <package-name>"
+        return 1
+    fi
+
+    local target="$1"
+    echo "🔍 Checking which user-installed packages require '$target'..."
+    
+    pip list --user --format=freeze | cut -d= -f1 | while read pkg; do
+        deps=$(pip show "$pkg" | awk -F': ' '/Requires:/ {print $2}')
+        if echo "$deps" | grep -wq "$target"; then
+            echo "📦 $pkg depends on $target"
+        fi
+    done
+}
+
+# Function to enable pyenv only when needed
+use_pyenv() {
+  export PYENV_ROOT="$HOME/.pyenv"
+  export PATH="$PYENV_ROOT/bin:$PATH"
+
+  if command -v pyenv >/dev/null 2>&1; then
+    eval "$(pyenv init -)"
+    echo "pyenv initialized."
+    echo "Available versions:"
+    pyenv versions
+  else
+    echo "pyenv not found in $PYENV_ROOT. Please install it first."
+  fi
 }
 
