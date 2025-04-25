@@ -193,23 +193,25 @@ prc(){
     #flake8 "$@"
 }
 
-open_latest_slurm() {
+open_latest() {
     local file
-    file=$(ls -t slurm* 2>/dev/null | head -n 1)
+    prefix=${1}
+    file=$(ls -t ${prefix} 2>/dev/null | head -n 1)
     if [[ -n "$file" ]]; then
         vim "$file"
     else
-        echo "No slurm* files found in the current directory." >&2
+        echo "No ${prefix} files found." >&2
     fi
 }
 
-tail_latest_slurm() {
+tail_latest() {
     local file
-    file=$(ls -t slurm* 2>/dev/null | head -n 1)
+    prefix=${1}
+    file=$(ls -t ${prefix} 2>/dev/null | head -n 1)
     if [[ -n "$file" ]]; then
         tail -f "$file"
     else
-        echo "No slurm* files found in the current directory." >&2
+        echo "No ${prefix} files found." >&2
     fi
 }
 
