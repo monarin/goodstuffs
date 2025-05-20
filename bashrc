@@ -197,6 +197,7 @@ open_latest() {
     local file
     prefix=${1}
     file=$(ls -t ${prefix} 2>/dev/null | head -n 1)
+    echo "open_latest $file"
     if [[ -n "$file" ]]; then
         vim "$file"
     else
@@ -208,6 +209,7 @@ tail_latest() {
     local file
     prefix=${1}
     file=$(ls -t ${prefix} 2>/dev/null | head -n 1)
+    echo "tail_latest $file"
     if [[ -n "$file" ]]; then
         tail -f "$file"
     else
@@ -245,5 +247,35 @@ use_pyenv() {
   else
     echo "pyenv not found in $PYENV_ROOT. Please install it first."
   fi
+}
+
+suspend_proc() {
+    if [ -z "$1" ]; then
+        echo "Usage: suspend_proc <keyword>"
+        return 1
+    fi
+    local pid
+    pid=$(ps aux | grep "$1" | grep -v grep | awk '{print $2}')
+    if [ -z "$pid" ]; then
+        echo "No matching process found for '$1'."
+        return 1
+    fi
+    kill -STOP "$pid"
+    echo "Suspended process $pid matching keyword '$1'."
+}
+
+resume_proc() {
+    if [ -z "$1" ]; then
+        echo "Usage: resume_proc <keyword>"
+        return 1
+    fi
+    local pid
+    pid=$(ps aux | grep "$1" | grep -v grep | awk '{print $2}')
+    if [ -z "$pid" ]; then
+        echo "No matching process found for '$1'."
+        return 1
+    fi
+    kill -CONT "$pid"
+    echo "Resumed process $pid matching keyword '$1'."
 }
 
