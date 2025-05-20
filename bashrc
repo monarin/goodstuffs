@@ -277,5 +277,24 @@ resume_proc() {
     fi
     kill -CONT "$pid"
     echo "Resumed process $pid matching keyword '$1'."
+
+kill_matching_procs() {
+    local keyword=$1
+    if [[ -z "$keyword" ]]; then
+        echo "Usage: kill_matching_procs <keyword>"
+        return 1
+    fi
+
+    local pids
+    pids=$(pgrep -f "$keyword")
+
+    if [[ -z "$pids" ]]; then
+        echo "No matching processes found for: $keyword"
+        return 0
+    fi
+
+    echo "Killing the following processes matching '$keyword':"
+    ps -fp $pids
+    kill $pids
 }
 
