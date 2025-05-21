@@ -249,35 +249,6 @@ use_pyenv() {
   fi
 }
 
-suspend_proc() {
-    if [ -z "$1" ]; then
-        echo "Usage: suspend_proc <keyword>"
-        return 1
-    fi
-    local pid
-    pid=$(ps aux | grep "$1" | grep -v grep | awk '{print $2}')
-    if [ -z "$pid" ]; then
-        echo "No matching process found for '$1'."
-        return 1
-    fi
-    kill -STOP "$pid"
-    echo "Suspended process $pid matching keyword '$1'."
-}
-
-resume_proc() {
-    if [ -z "$1" ]; then
-        echo "Usage: resume_proc <keyword>"
-        return 1
-    fi
-    local pid
-    pid=$(ps aux | grep "$1" | grep -v grep | awk '{print $2}')
-    if [ -z "$pid" ]; then
-        echo "No matching process found for '$1'."
-        return 1
-    fi
-    kill -CONT "$pid"
-    echo "Resumed process $pid matching keyword '$1'."
-
 kill_matching_procs() {
     local keyword=$1
     if [[ -z "$keyword" ]]; then
