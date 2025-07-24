@@ -269,3 +269,12 @@ kill_matching_procs() {
     kill $pids
 }
 
+ssh_link_port_to_host_dest() {
+    # This links port 8787 on the local machine
+    # to localhost:8787 on sdfiana002 
+    export ssh_link_port=$1    # e.g. 8787
+    export ssh_link_dest=$2    # e.g. localhost:8787
+    export ssh_link_host=$3    # e.g. sdfiana001
+    ssh -vv -L $ssh_link_port:$ssh_link_dest $ssh_link_host
+    #ssh -C2qfTnN -L $ssh_link_port:$ssh_link_dest $ssh_link_host
+}
