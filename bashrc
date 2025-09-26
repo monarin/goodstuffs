@@ -278,3 +278,24 @@ ssh_link_port_to_host_dest() {
     ssh -vv -L $ssh_link_port:$ssh_link_dest $ssh_link_host
     #ssh -C2qfTnN -L $ssh_link_port:$ssh_link_dest $ssh_link_host
 }
+
+# Refresh SSH key on jump host
+fix_ssh_key() {
+  local key="${1:-$HOME/.ssh/id_ed25519}"
+  local pub="${key}.pub"
+  local user="monarin"
+  local host="jump.slac.stanford.edu"
+
+  if [[ ! -f "$key" || ! -f "$pub" ]]; then
+    echo "❌ Key or pubkey not found: $key / $pub"
+    return 1
+  fi
+
+  echo "🔑 Adding $key to ssh-agent..."
+  ssh-add "$key" || return 1
+
+  echo "📤 Copying public key to $user@$host..."
+  ssh-copy-id -i "$pub" "$user@$host" || return 1
+
+  echo "✅ SSH key refreshed on $host. Try again with: ssh psbuildrc"
+}
