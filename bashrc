@@ -299,3 +299,14 @@ fix_ssh_key() {
 
   echo "✅ SSH key refreshed on $host. Try again with: ssh psbuildrc"
 }
+
+grx() {
+    if [ -z "$1" ]; then
+        echo "Usage: grepexact <pattern> [directory]"
+        return 1
+    fi
+    local pattern="$1"
+    local dir="${2:-.}"
+    grep -R --exclude-dir={.git,__pycache__} --include='*.py' -n --color=always "\b${pattern}\b" "$dir"
+}
+
