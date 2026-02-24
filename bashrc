@@ -29,6 +29,8 @@ alias delpyc="find . -name \"*. pyc\" -delete"
 
 alias now='date "+%Y-%m-%d+%H%M%S"'
 
+export DAQ_LOG_DIR=/sdf/data/lcls/ds/prj/prjdat21/results/appdata/daq_logs.db
+export OMPI_MCA_osc=sm  # For MPI.Win.Allocate_shared
 
 vman() {
     man "$@" | col -b | vi -R -
@@ -167,12 +169,9 @@ lstoday() {
 }
 
 sacctj() {
-    sacct -j $1 --format=JobIDRaw,JobName%12,NodeList,Start,End,Elapsed,REQCPUS,ALLOCTRES%25
+  sacct -j "$1" --format=JobIDRaw,JobName%12,NodeList%75,Start,End,Elapsed,REQCPUS,ALLOCTRES%25
 }
 
-activate_pytorch(){
-    export PYTHONPATH=$PYTHONPATH:/sdf/scratch/users/m/monarin/sw
-}
 
 psf() {
     ps -p $1 -o pid,vsz=MEMORY -o user,group=GROUP -o cls,pri,rtprio -o comm,args=ARGS | cat
@@ -318,3 +317,85 @@ use_gpuio311() {
   micromamba activate gpuio311
 }
 
+activate_xtcpp() {
+    local xtcpp_root="$HOME/sw/xtcpp/install"
+    if [ ! -d "$xtcpp_root" ]; then
+        echo "xtcpp install not found at $xtcpp_root" >&2
+        return 1
+    fi
+
+    export PYTHONPATH="$xtcpp_root/lib/python3.9/site-packages${PYTHONPATH:+:$PYTHONPATH}"
+    export PATH="$xtcpp_root/bin:$PATH"
+}
+
+detnames_all_streams () {
+  local exp="$1"
+  local run="$2"
+  local base="${3:-/sdf/data/lcls/ds}"
+
+  if [[ -z "$exp" || -z "$run" ]]; then
+    echo "Usage: detnames_all_streams <exp> <runnum> [basepath]" >&2
+    echo "  ex: detnames_all_streams mfx101344525 75" >&2
+    return 2
+  fi
+
+  # Decode exp like mfx101344525 -> instr=mfx, expdir=mfx/mfx101344525
+  local instr="${exp:0:3}"
+  local expdir="${instr}/${exp}"
+
+  # Format run rNNNN (4 digits)
+  local rtag
+  rtag=$(printf "r%04d" "$run") || return 2
+
+  local xtcdir="${base%/}/${expdir}/xtc"
+  local prefix="${exp}-${rtag}"
+
+  # Only chunk 0: ...-c000.xtc2
+  ls -1 "${xtcdir}/${prefix}-s"*-c000.xtc2 2>/dev/null \
+    | sed -n 's/.*-s\([0-9]\+\)-c000\.xtc2$/\1 &/p' \
+    | sort -n -k1,1 \
+    | cut -d' ' -f2- \
+    | while IFS= read -r f; do
+        echo "==> $f"
+        detnames "$f"
+      done
+}
+
+
+srun_alloc() {
+  local jobid="$1"
+  local node="$2"
+  if [[ -z "$jobid" || -z "$node" ]]; then
+    echo "usage: srun_alloc <jobid> <nodename>"
+    return 1
+  fi
+  srun --jobid="$jobid" --nodelist="$node" --pty bash -l
+}
+
+weka_tier() {
+  if [ $# -lt 1 ]; then
+    echo "Usage: weka_tier <path>" >&2
+    return 1
+  fi
+  weka fs tier location "$@"
+}
+
+opencode ()
+{
+    local bin_dir="/sdf/group/lcls/ds/dm/apps/dev/code/.opencode/bin";
+    local config_dir="/sdf/group/lcls/ds/dm/apps/dev/opencode";
+    if [[ "$1" == "--local" ]]; then
+        shift;
+        bin_dir="$HOME/.opencode/bin";
+        config_dir="$HOME/.config/opencode";
+    fi;
+    OPENCODE_CONFIG_DIR="$config_dir" PATH="$bin_dir:$PATH" command opencode "$@"
+}
+
+sq() {
+    if [ $# -eq 0 ]; then
+        squeue -u "$USER"
+    else
+        squeue "$@"
+    fi
+}
