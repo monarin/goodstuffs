@@ -269,14 +269,16 @@ kill_matching_procs() {
     kill $pids
 }
 
-ssh_link_port_to_host_dest() {
-    # This links port 8787 on the local machine
-    # to localhost:8787 on sdfiana002 
-    export ssh_link_port=$1    # e.g. 8787
-    export ssh_link_dest=$2    # e.g. localhost:8787
-    export ssh_link_host=$3    # e.g. sdfiana001
-    ssh -vv -L $ssh_link_port:$ssh_link_dest $ssh_link_host
-    #ssh -C2qfTnN -L $ssh_link_port:$ssh_link_dest $ssh_link_host
+ssh_ipmi_tunnel() {
+    # Usage:
+    #   ssh_ipmi_tunnel local_port ipmi_host ssh_host
+
+    local local_port="$1"             # e.g. 8787
+    local ipmi_host="$2"              # e.g. drp-srcf-cmp005-ipmi
+    local ssh_host="$3"               # e.g. psbuildrc
+
+    echo "🔗 Forwarding $local_port → $ipmi_host:80 via $ssh_host"
+    ssh -N -L "${local_port}:${ipmi_host}:80" "$ssh_host"
 }
 
 # Refresh SSH key on jump host
@@ -308,5 +310,11 @@ grx() {
     local pattern="$1"
     local dir="${2:-.}"
     grep -R --exclude-dir={.git,__pycache__} --include='*.py' -n --color=always "\b${pattern}\b" "$dir"
+}
+
+use_gpuio311() {
+  export MAMBA_ROOT_PREFIX="$HOME/micromamba"
+  eval "$($HOME/bin/micromamba shell hook -s bash)"
+  micromamba activate gpuio311
 }
 
