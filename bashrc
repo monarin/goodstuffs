@@ -312,8 +312,18 @@ grx() {
 }
 
 use_gpuio311() {
-  export MAMBA_ROOT_PREFIX="$HOME/micromamba"
-  eval "$($HOME/bin/micromamba shell hook -s bash)"
+  local base=""
+  if [ -x /sdf/home/m/monarin/bin/micromamba ] && [ -d /sdf/home/m/monarin/micromamba ]; then
+    base=/sdf/home/m/monarin
+  elif [ -x /cds/home/m/monarin/bin/micromamba ] && [ -d /cds/home/m/monarin/micromamba ]; then
+    base=/cds/home/m/monarin
+  else
+    echo "micromamba installation not found under /sdf or /cds"
+    return 1
+  fi
+
+  export MAMBA_ROOT_PREFIX="$base/micromamba"
+  eval "$("$base/bin/micromamba" shell hook -s bash)"
   micromamba activate gpuio311
 }
 
@@ -399,3 +409,112 @@ sq() {
         squeue "$@"
     fi
 }
+
+nsys_report_screen() {
+  # Usage: nsys_report_screen <report.nsys-rep>
+  local rep="$1"
+  if [[ -z "$rep" ]]; then
+    echo "Usage: nsys_report_screen <report.nsys-rep>" >&2
+    return 2
+  fi
+  if [[ ! -f "$rep" ]]; then
+    echo "Report not found: $rep" >&2
+    return 1
+  fi
+
+  local nsys_bin="${NSYS_BIN:-}"
+  if [[ -z "$nsys_bin" ]] && command -v nsys >/dev/null 2>&1; then
+    nsys_bin="$(command -v nsys)"
+  fi
+
+  local cand
+  for cand in \
+    "$nsys_bin" \
+    "$HOME/tools/nsight-systems/2026.1.1/pkg/bin/nsys" \
+    "$HOME/nsight-systems-2026.1.1/bin/nsys" \
+    /usr/local/cuda/bin/nsys \
+    /usr/local/nsight-systems/bin/nsys \
+    /opt/nvidia/nsight-systems/bin/nsys; do
+    if [[ -n "$cand" && -x "$cand" ]]; then
+      nsys_bin="$cand"
+      break
+    fi
+  done
+
+  if [[ -z "$nsys_bin" || ! -x "$nsys_bin" ]]; then
+    echo "nsys not found. Set NSYS_BIN or install Nsight Systems." >&2
+    return 127
+  fi
+
+  echo "[nsys_report_screen] nsys : $nsys_bin"
+  echo "[nsys_report_screen] file : $rep"
+  echo
+
+  echo "===== CUDA API Summary (cuda_api_sum) ====="
+  "$nsys_bin" stats --force-export=true --report cuda_api_sum "$rep"
+  echo
+
+  echo "===== CUDA GPU MemOps by Time (cuda_gpu_mem_time_sum) ====="
+  "$nsys_bin" stats --force-export=true --report cuda_gpu_mem_time_sum "$rep"
+  echo
+
+  echo "===== OS Runtime Summary (osrt_sum) ====="
+  "$nsys_bin" stats --force-export=true --report osrt_sum "$rep"
+  echo
+
+  echo "===== GPU Memory Usage (CUDA_GPU_MEMORY_USAGE_EVENTS) ====="
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    echo "sqlite3 not found; skipping GPU memory usage summary."
+    return 0
+  fi
+
+  local db="${rep%.nsys-rep}.sqlite"
+  if [[ ! -f "$db" ]]; then
+    echo "SQLite export not found: $db"
+    echo "Run nsys stats once to generate it."
+    return 0
+  fi
+
+  local has_tbl
+  has_tbl="$(sqlite3 "$db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='CUDA_GPU_MEMORY_USAGE_EVENTS';" 2>/dev/null || echo 0)"
+  if [[ "$has_tbl" != "1" ]]; then
+    echo "No CUDA_GPU_MEMORY_USAGE_EVENTS table in this report."
+    return 0
+  fi
+
+  local n_events
+  n_events="$(sqlite3 "$db" "SELECT count(*) FROM CUDA_GPU_MEMORY_USAGE_EVENTS;" 2>/dev/null || echo 0)"
+  echo "events: $n_events"
+  if [[ "$n_events" -eq 0 ]]; then
+    return 0
+  fi
+
+  local peak_device_mib
+  peak_device_mib="$(sqlite3 "$db" "WITH ev AS (SELECT start, rowid AS rid, CASE memoryOperationType WHEN 0 THEN bytes ELSE -bytes END AS delta FROM CUDA_GPU_MEMORY_USAGE_EVENTS WHERE memKind=2), run AS (SELECT sum(delta) OVER (ORDER BY start, rid ROWS UNBOUNDED PRECEDING) AS cur FROM ev) SELECT printf('%.2f', COALESCE(max(cur),0)/1024.0/1024.0) FROM run;" 2>/dev/null)"
+  echo "peak_device_alloc_mib: ${peak_device_mib:-0.00}"
+
+  echo "by_kind_and_op (count, total_mib):"
+  sqlite3 -header -column "$db" "SELECT COALESCE(k.label, CAST(e.memKind AS TEXT)) AS mem_kind, COALESCE(o.label, CAST(e.memoryOperationType AS TEXT)) AS op, COUNT(*) AS n_events, printf('%.2f', SUM(e.bytes)/1024.0/1024.0) AS total_mib FROM CUDA_GPU_MEMORY_USAGE_EVENTS e LEFT JOIN ENUM_CUDA_MEM_KIND k ON k.id = e.memKind LEFT JOIN ENUM_CUDA_DEV_MEM_EVENT_OPER o ON o.id = e.memoryOperationType GROUP BY mem_kind, op ORDER BY n_events DESC, total_mib DESC;"
+}
+
+activate_psana2_gpu_cupy() {
+    export CUDA_PATH="$HOME/.local/share/psana2-gpu/cuda12shim"
+    export LD_LIBRARY_PATH="$CUDA_PATH/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+}
+
+show_slurm_gpu_resources() {
+    echo "$SLURM_JOB_ID"
+    echo "$SLURM_CPUS_ON_NODE"
+    echo "$CUDA_VISIBLE_DEVICES"
+    nvidia-smi -L
+    python - <<'PY'
+import cupy as cp
+
+print("deviceCount =", cp.cuda.runtime.getDeviceCount())
+for i in range(cp.cuda.runtime.getDeviceCount()):
+    p = cp.cuda.runtime.getDeviceProperties(i)
+    print(i, p["name"].decode())
+PY
+}
+
+alias masked="QT_AUTO_SCREEN_SCALE_FACTOR=0 QT_SCALE_FACTOR=1 QT_FONT_DPI=96 masked"
