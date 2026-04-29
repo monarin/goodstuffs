@@ -338,6 +338,19 @@ activate_xtcpp() {
     export PATH="$xtcpp_root/bin:$PATH"
 }
 
+activate_psana() {
+    local psana_root="$HOME/lcls2/install_psana"
+    local pyver="3.9"
+
+    if [ ! -d "$psana_root" ]; then
+        echo "psana install not found at $psana_root" >&2
+        return 1
+    fi
+
+    export PYTHONPATH="$psana_root/lib/python${pyver}/site-packages${PYTHONPATH:+:$PYTHONPATH}"
+    export PATH="$psana_root/bin:$PATH"
+}
+
 detnames_all_streams () {
   local exp="$1"
   local run="$2"
