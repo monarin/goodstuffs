@@ -515,6 +515,48 @@ activate_psana2_gpu_cupy() {
     export LD_LIBRARY_PATH="$CUDA_PATH/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 }
 
+activate_mps() {
+    local gpu_device="${1:-0}"
+    local tag="${2:-${USER}-gpuctx-gpu${gpu_device}}"
+
+    if ! command -v nvidia-cuda-mps-control >/dev/null 2>&1; then
+        echo "nvidia-cuda-mps-control not found" >&2
+        return 1
+    fi
+
+    export CUDA_VISIBLE_DEVICES="${gpu_device}"
+    export CUDA_MPS_PIPE_DIRECTORY="${CUDA_MPS_PIPE_DIRECTORY:-/tmp/nvidia-mps-${tag}}"
+    export CUDA_MPS_LOG_DIRECTORY="${CUDA_MPS_LOG_DIRECTORY:-/tmp/nvidia-mps-${tag}-log}"
+    mkdir -p "$CUDA_MPS_PIPE_DIRECTORY" "$CUDA_MPS_LOG_DIRECTORY"
+
+    nvidia-cuda-mps-control -d
+
+    echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+    echo "CUDA_MPS_PIPE_DIRECTORY=$CUDA_MPS_PIPE_DIRECTORY"
+    echo "CUDA_MPS_LOG_DIRECTORY=$CUDA_MPS_LOG_DIRECTORY"
+    echo "MPS server list:"
+    echo get_server_list | nvidia-cuda-mps-control
+    echo "MPS log files:"
+    ls -l "$CUDA_MPS_LOG_DIRECTORY"
+}
+
+deactivate_mps() {
+    if ! command -v nvidia-cuda-mps-control >/dev/null 2>&1; then
+        echo "nvidia-cuda-mps-control not found" >&2
+        return 1
+    fi
+
+    echo quit | nvidia-cuda-mps-control >/dev/null 2>&1 || true
+    echo "Stopped CUDA MPS"
+    if [[ -n "${CUDA_MPS_PIPE_DIRECTORY:-}" ]]; then
+        echo "CUDA_MPS_PIPE_DIRECTORY=$CUDA_MPS_PIPE_DIRECTORY"
+    fi
+    if [[ -n "${CUDA_MPS_LOG_DIRECTORY:-}" ]]; then
+        echo "CUDA_MPS_LOG_DIRECTORY=$CUDA_MPS_LOG_DIRECTORY"
+        ls -l "$CUDA_MPS_LOG_DIRECTORY" 2>/dev/null || true
+    fi
+}
+
 show_slurm_gpu_resources() {
     echo "$SLURM_JOB_ID"
     echo "$SLURM_CPUS_ON_NODE"
@@ -528,6 +570,51 @@ for i in range(cp.cuda.runtime.getDeviceCount()):
     p = cp.cuda.runtime.getDeviceProperties(i)
     print(i, p["name"].decode())
 PY
+}
+
+codex_skills_port() {
+    local repo_url="${1:-git@github.com:monarin/codex-skills.git}"
+    local repo_dir="${CODEX_SKILLS_REPO:-$HOME/codex-skills}"
+    local skills_dir="${CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
+
+    if ! command -v git >/dev/null 2>&1; then
+        echo "git not found" >&2
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$repo_dir")" "$skills_dir"
+
+    if [[ -d "$repo_dir/.git" ]]; then
+        if git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+            echo "Updating $repo_dir"
+            git -C "$repo_dir" pull --ff-only || return $?
+        else
+            echo "Using local $repo_dir (no upstream configured)"
+        fi
+    elif [[ -e "$repo_dir" ]]; then
+        echo "$repo_dir exists but is not a git repository" >&2
+        return 1
+    else
+        echo "Cloning $repo_url into $repo_dir"
+        git clone "$repo_url" "$repo_dir" || return $?
+    fi
+
+    local skill_path skill_name target
+    for skill_path in "$repo_dir"/*; do
+        [[ -d "$skill_path" ]] || continue
+        [[ -f "$skill_path/SKILL.md" ]] || continue
+
+        skill_name="$(basename "$skill_path")"
+        target="$skills_dir/$skill_name"
+
+        if [[ -e "$target" && ! -L "$target" ]]; then
+            echo "Skipping $skill_name: $target exists and is not a symlink" >&2
+            continue
+        fi
+
+        ln -sfn "$skill_path" "$target"
+        echo "Linked $skill_name -> $skill_path"
+    done
 }
 
 alias masked="QT_AUTO_SCREEN_SCALE_FACTOR=0 QT_SCALE_FACTOR=1 QT_FONT_DPI=96 masked"
