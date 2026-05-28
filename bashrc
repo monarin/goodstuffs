@@ -29,8 +29,15 @@ alias delpyc="find . -name \"*. pyc\" -delete"
 
 alias now='date "+%Y-%m-%d+%H%M%S"'
 
+<<<<<<< Updated upstream
 export DAQ_LOG_DIR=/sdf/data/lcls/ds/prj/prjdat21/results/appdata/daq_logs.db
 export OMPI_MCA_osc=sm  # For MPI.Win.Allocate_shared
+=======
+export QT_AUTO_SCREEN_SCALE_FACTOR=0 
+export QT_SCALE_FACTOR=1 
+export QT_FONT_DPI=96
+
+>>>>>>> Stashed changes
 
 vman() {
     man "$@" | col -b | vi -R -
