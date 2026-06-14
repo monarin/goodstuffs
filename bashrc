@@ -560,6 +560,62 @@ deactivate_mps() {
     fi
 }
 
+check_mps() {
+    # Usage: check_mps [path/to/test_cupy.py]
+    echo "[check_mps] host=$(hostname)"
+    echo "[check_mps] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}"
+    echo "[check_mps] CUDA_MPS_PIPE_DIRECTORY=${CUDA_MPS_PIPE_DIRECTORY:-<unset>}"
+    echo "[check_mps] CUDA_MPS_LOG_DIRECTORY=${CUDA_MPS_LOG_DIRECTORY:-<unset>}"
+
+    echo "[check_mps] server list before CuPy client:"
+    echo get_server_list | nvidia-cuda-mps-control || true
+
+    local script="${1:-}"
+    if [[ -z "$script" ]]; then
+        if [[ -f "psana/psana/gpu/tools/test_cupy.py" ]]; then
+            script="psana/psana/gpu/tools/test_cupy.py"
+        elif [[ -f "$HOME/lcls2/psana/psana/gpu/tools/test_cupy.py" ]]; then
+            script="$HOME/lcls2/psana/psana/gpu/tools/test_cupy.py"
+        elif [[ -f "$HOME/lcls2_worktrees/psana2-gpu-multiowner-baseline/psana/psana/gpu/tools/test_cupy.py" ]]; then
+            script="$HOME/lcls2_worktrees/psana2-gpu-multiowner-baseline/psana/psana/gpu/tools/test_cupy.py"
+        fi
+    fi
+
+    echo "[check_mps] CuPy client:"
+    if [[ -n "$script" && -f "$script" ]]; then
+        python "$script"
+    else
+        python - <<'PY'
+import os
+import socket
+import cupy as cp
+
+x = cp.arange(16, dtype=cp.float32)
+y = (x * 2.0 + 1.0).sum()
+cp.cuda.Stream.null.synchronize()
+
+print(f"host={socket.gethostname()}")
+print(f"pid={os.getpid()}")
+print(f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')}")
+print(f"CUDA_MPS_PIPE_DIRECTORY={os.environ.get('CUDA_MPS_PIPE_DIRECTORY', '<unset>')}")
+print(f"CUDA_MPS_LOG_DIRECTORY={os.environ.get('CUDA_MPS_LOG_DIRECTORY', '<unset>')}")
+print(f"device_count={cp.cuda.runtime.getDeviceCount()}")
+print(f"device_id={cp.cuda.runtime.getDevice()}")
+props = cp.cuda.runtime.getDeviceProperties(cp.cuda.runtime.getDevice())
+name = props["name"].decode() if isinstance(props["name"], bytes) else props["name"]
+print(f"device_name={name}")
+print(f"result={float(y.get())}")
+PY
+    fi
+
+    echo "[check_mps] server list after CuPy client:"
+    echo get_server_list | nvidia-cuda-mps-control || true
+
+    if [[ -n "${CUDA_MPS_LOG_DIRECTORY:-}" && -f "$CUDA_MPS_LOG_DIRECTORY/server.log" ]]; then
+        echo "[check_mps] recent server.log entries:"
+        tail -n 40 "$CUDA_MPS_LOG_DIRECTORY/server.log"
+    fi
+}
 show_slurm_gpu_resources() {
     echo "$SLURM_JOB_ID"
     echo "$SLURM_CPUS_ON_NODE"
@@ -621,3 +677,16 @@ codex_skills_port() {
 }
 
 alias masked="QT_AUTO_SCREEN_SCALE_FACTOR=0 QT_SCALE_FACTOR=1 QT_FONT_DPI=96 masked"
+
+# Playwright MCP for letting Codex on SDF inspect an approved local browser tab.
+# Run these on the Mac where Chrome is open.
+codex_playwright_mcp() {
+    npx -y @playwright/mcp@latest --extension --port "${1:-8931}" --host 127.0.0.1
+}
+
+codex_playwright_tunnel() {
+    local sdf_host="${1:-sdfiana002.sdf.slac.stanford.edu}"
+    local port="${2:-8931}"
+
+    ssh -N -R "${port}:127.0.0.1:${port}" "monarin@${sdf_host}"
+}
