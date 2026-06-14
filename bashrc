@@ -681,12 +681,12 @@ alias masked="QT_AUTO_SCREEN_SCALE_FACTOR=0 QT_SCALE_FACTOR=1 QT_FONT_DPI=96 mas
 # Playwright MCP for letting Codex on SDF inspect an approved local browser tab.
 # Run these on the Mac where Chrome is open.
 codex_playwright_mcp() {
-    npx -y @playwright/mcp@latest --extension --port "${1:-8931}" --host 127.0.0.1
+    npx -y @playwright/mcp@latest --extension --port "${1:-8932}" --host 127.0.0.1
 }
 
 codex_playwright_tunnel() {
-    local sdf_host="${1:-sdfiana002.sdf.slac.stanford.edu}"
-    local port="${2:-8931}"
+    local sdf_host="${1:-sdfiana}"
+    local port="${2:-8932}"
 
-    ssh -N -R "${port}:127.0.0.1:${port}" "monarin@${sdf_host}"
+    ssh -N -R "127.0.0.1:${port}:localhost:${port}" "${sdf_host}"
 }
