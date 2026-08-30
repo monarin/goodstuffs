@@ -1,0 +1,6 @@
+node_modules/
+*.swp
+*.swo
+*.before-*
+*.codex-pre-*
+.DS_Store

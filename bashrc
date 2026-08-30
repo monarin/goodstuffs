@@ -690,3 +690,12 @@ codex_playwright_tunnel() {
 
     ssh -N -R "127.0.0.1:${port}:localhost:${port}" "${sdf_host}"
 }
+
+# Refresh the daily S3DF key, then verify the gateway and both remote hosts.
+renew_s3df_key() {
+    local refresh_helper="${HOME}/goodstuffs/bin/s3df-key-refresh.sh"
+    local verify_helper="${HOME}/codex-skills/s3df-ssh-auth/scripts/verify-s3df-hosts.sh"
+
+    "$refresh_helper" || return $?
+    "$verify_helper"
+}
