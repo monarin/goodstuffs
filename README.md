@@ -37,6 +37,12 @@ package at <https://portal.nersc.gov/cfs/mfa/>. After installation, run
 `sshproxy -f` and complete the browser login to create a fresh per-Mac NERSC
 credential.
 
+## SDF development workspace
+
+`sdfwork` restores recent remote Codex development sessions in separate Apple
+Terminal windows, with an optional tmux fallback. See
+[docs/sdfwork.md](docs/sdfwork.md) for installation, usage, and troubleshooting.
+
 ## Manual dotfile setup
 
 If you do not use the bootstrap script, add this line to `~/.bashrc`:

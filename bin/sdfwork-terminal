@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Open recent remote Codex tasks in independent Apple Terminal windows."""
+
+import argparse
+import json
+import shlex
+import subprocess
+import sys
+
+
+APPLESCRIPT = r'''
+on run argv
+    tell application "Terminal"
+        activate
+        repeat with itemNumber from 1 to (count argv) by 2
+            set taskTitle to item itemNumber of argv
+            set shellCommand to item (itemNumber + 1) of argv
+            set existingTab to missing value
+            set existingWindow to missing value
+
+            repeat with terminalWindow in windows
+                repeat with terminalTab in tabs of terminalWindow
+                    if (custom title of terminalTab is taskTitle) and (busy of terminalTab) then
+                        set existingTab to terminalTab
+                        set existingWindow to terminalWindow
+                        exit repeat
+                    end if
+                end repeat
+                if existingTab is not missing value then exit repeat
+            end repeat
+
+            if existingTab is not missing value then
+                set selected tab of existingWindow to existingTab
+                set miniaturized of existingWindow to false
+                set index of existingWindow to 1
+            else
+                set newTab to do script shellCommand
+                set custom title of newTab to taskTitle
+                set title displays custom title of newTab to true
+                delay 0.25
+            end if
+        end repeat
+    end tell
+end run
+'''
+
+
+def terminal_command(payload, task):
+    """Use a short command; the remote helper owns all shell quoting."""
+    remote_command = payload["remote_helper"] + " --terminal " + shlex.quote(task["id"])
+    return " ".join(
+        shlex.quote(value)
+        for value in ["ssh", "-t", payload["host"], remote_command]
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--host", default="sdfiana")
+    parser.add_argument("--remote-helper", default="~/bin/sdfwork-remote")
+    args = parser.parse_args()
+    payload = json.load(sys.stdin)
+    payload["host"] = args.host
+    payload["remote_helper"] = args.remote_helper
+    tasks = payload.get("tasks", [])
+    if not tasks:
+        print("sdfwork: no resumable development tasks were found", file=sys.stderr)
+        return 1
+
+    apple_args = []
+    for task in tasks:
+        apple_args.extend(
+            ["sdfwork: " + task["window"], terminal_command(payload, task)]
+        )
+
+    if args.dry_run:
+        for index in range(0, len(apple_args), 2):
+            print(apple_args[index])
+            print("  " + apple_args[index + 1])
+        return 0
+
+    subprocess.check_call(["osascript", "-e", APPLESCRIPT, "--"] + apple_args)
+    print("sdfwork: opened or focused {} Apple Terminal windows".format(len(tasks)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

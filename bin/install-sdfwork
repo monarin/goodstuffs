@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "install-sdfwork must run on the local Mac." >&2
+  exit 1
+fi
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/.." && pwd)"
+host="${SDFWORK_HOST:-sdfiana}"
+timestamp="$(date '+%Y%m%d-%H%M%S')"
+backup_dir="${HOME}/.local/state/sdfwork/backups/${timestamp}"
+local_bin="${HOME}/bin"
+
+mkdir -p "$local_bin" "$backup_dir"
+
+install_local() {
+  local name="$1"
+  local source="${repo_root}/bin/${name}"
+  local target="${local_bin}/${name}"
+
+  if [[ -e "$target" ]] && ! cmp -s "$source" "$target"; then
+    cp -p "$target" "${backup_dir}/${name}"
+  fi
+  install -m 755 "$source" "$target"
+}
+
+install_local sdfwork
+install_local sdfwork-terminal
+install_local renew_s3df_key
+
+ssh "$host" 'mkdir -p "$HOME/bin"'
+if ssh "$host" 'test -e "$HOME/bin/sdfwork-remote"'; then
+  ssh "$host" "cp -p \"\$HOME/bin/sdfwork-remote\" \"\$HOME/bin/sdfwork-remote.backup-${timestamp}\""
+fi
+
+remote_staging="bin/.sdfwork-remote.new-${timestamp}"
+scp -q "${repo_root}/bin/sdfwork-remote" "${host}:${remote_staging}"
+ssh "$host" "chmod 755 \"\$HOME/${remote_staging}\"; mv \"\$HOME/${remote_staging}\" \"\$HOME/bin/sdfwork-remote\""
+
+echo "Installed local launchers in ${local_bin}"
+echo "Installed remote helper on ${host}:~/bin/sdfwork-remote"
+echo "Local backups, when needed: ${backup_dir}"

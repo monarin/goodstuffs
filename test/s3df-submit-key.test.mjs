@@ -9,7 +9,7 @@ import {
   RefreshTargetNotFoundError,
 } from '../scripts/s3df-submit-key.mjs';
 
-const require = createRequire('/Users/monarin/goodstuffs/package.json');
+const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 
 let browser;

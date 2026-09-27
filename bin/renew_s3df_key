@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "renew_s3df_key must run on the local Mac." >&2
+  exit 1
+fi
+
+repo_root="${GOODSTUFFS_ROOT:-${HOME}/goodstuffs}"
+refresh_helper="${S3DF_REFRESH_HELPER:-${repo_root}/bin/s3df-key-refresh.sh}"
+verify_helper="${S3DF_VERIFY_HELPER:-${repo_root}/scripts/verify-s3df-hosts.sh}"
+
+if [[ ! -x "$refresh_helper" || ! -x "$verify_helper" ]]; then
+  echo "renew_s3df_key: missing helper under $repo_root" >&2
+  echo "Set GOODSTUFFS_ROOT if the repository is cloned elsewhere." >&2
+  exit 1
+fi
+
+"$refresh_helper" "$@"
+"$verify_helper"

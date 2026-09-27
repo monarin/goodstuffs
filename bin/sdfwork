@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Local Mac entry point. Discovery happens on sdfiana; the default UI is three
+# independent Apple Terminal windows with native scrollback.
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SDFWORK_HOST="${SDFWORK_HOST:-sdfiana}"
+SDFWORK_REMOTE_HELPER="${SDFWORK_REMOTE_HELPER:-~/bin/sdfwork-remote}"
+SDFWORK_TERMINAL_HELPER="${SDFWORK_TERMINAL_HELPER:-${script_dir}/sdfwork-terminal}"
+SDFWORK_RENEW_HELPER="${SDFWORK_RENEW_HELPER:-${script_dir}/renew_s3df_key}"
+
+usage() {
+  cat <<'EOF'
+Usage: sdfwork [--list|--tmux [--reset]]
+
+  (no args)       Open/focus three independent Apple Terminal windows.
+  --list          Show the tasks that would be selected.
+  --tmux          Use the original persistent sdf-work tmux workspace.
+  --tmux --reset  Rebuild that tmux workspace from the latest tasks.
+  --reset         Backward-compatible alias for --tmux --reset.
+
+Before connecting, sdfwork runs renew_s3df_key on this Mac. A fresh accepted
+registration is reused; an expired or rejected registration opens the normal
+S3DF browser renewal flow.
+EOF
+}
+
+open_terminal_windows() {
+  # An active tmux Codex process holds the same resumable session open. Ask
+  # before ending the old workspace during the one-time UI migration.
+  if ssh "$SDFWORK_HOST" 'tmux has-session -t sdf-work 2>/dev/null'; then
+    echo "sdfwork: the original tmux workspace is still running."
+    read -r -p "Stop it and reopen its tasks in separate Terminal windows? [y/N] " reply
+    case "$reply" in
+      y|Y|yes|YES)
+        ssh "$SDFWORK_HOST" 'tmux kill-session -t sdf-work'
+        ;;
+      *)
+        echo "sdfwork: cancelled; use 'sdfwork --tmux' to keep using it."
+        return 1
+        ;;
+    esac
+  fi
+
+  ssh "$SDFWORK_HOST" "${SDFWORK_REMOTE_HELPER} --json" |
+    "$SDFWORK_TERMINAL_HELPER" --host "$SDFWORK_HOST" --remote-helper "$SDFWORK_REMOTE_HELPER"
+}
+
+check_s3df_access() {
+  echo "sdfwork: checking daily S3DF SSH access..."
+
+  # The repository-owned helper performs a cheap freshness/live-access check,
+  # renews only when necessary, then verifies all managed S3DF entry points.
+  if [[ ! -x "$SDFWORK_RENEW_HELPER" ]]; then
+    echo "sdfwork: missing renewal helper: $SDFWORK_RENEW_HELPER" >&2
+    return 1
+  fi
+  if ! "$SDFWORK_RENEW_HELPER"; then
+    cat >&2 <<'EOF'
+sdfwork: S3DF access is not ready; workspace launch cancelled.
+Complete Stanford SSO/Duo if Chrome opened, then rerun sdfwork.
+You can also diagnose it directly with: renew_s3df_key
+EOF
+    return 1
+  fi
+}
+
+case "${1:-}" in
+  "")
+    check_s3df_access
+    open_terminal_windows
+    ;;
+  --reset)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    check_s3df_access
+    exec ssh -t "$SDFWORK_HOST" "${SDFWORK_REMOTE_HELPER} --reset"
+    ;;
+  --list)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    check_s3df_access
+    exec ssh "$SDFWORK_HOST" "${SDFWORK_REMOTE_HELPER} --list"
+    ;;
+  --tmux)
+    case "${2:-}" in
+      "")
+        [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+        check_s3df_access
+        exec ssh -t "$SDFWORK_HOST" "$SDFWORK_REMOTE_HELPER"
+        ;;
+      --reset)
+        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+        check_s3df_access
+        exec ssh -t "$SDFWORK_HOST" "${SDFWORK_REMOTE_HELPER} --reset"
+        ;;
+      *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  --no-attach)
+    # Internal/testing mode: construct or inspect without attaching a TTY.
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    check_s3df_access
+    exec ssh "$SDFWORK_HOST" "${SDFWORK_REMOTE_HELPER} --no-attach"
+    ;;
+  -h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

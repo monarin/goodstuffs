@@ -1,0 +1,663 @@
+#!/usr/bin/env python3
+"""Discover Mona's recent Codex tasks and optionally restore them in tmux.
+
+This script is intentionally read-only with respect to Codex and Git state.  It
+queries Codex's local SQLite index, resolves repositories with Git, and only
+creates (or replaces with --reset) the tmux session named ``sdf-work``.
+
+Python 3.6 compatibility matters on sdfiana.
+"""
+
+from __future__ import print_function
+
+import argparse
+import collections
+import datetime
+import json
+import os
+import re
+import shlex
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+
+
+SESSION = "sdf-work"
+VERSION = "1"
+MAX_TASKS = 3
+TAIL_BYTES = 4 * 1024 * 1024
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f-]{27}$")
+WORKDIR_RE = re.compile(r"workdir[\"']?\s*:\s*[\"']([^\"']+)[\"']")
+
+# A coding session should have evidence of repository work in its recent
+# rollout.  This avoids restoring one-off disk checks, task-listing queries,
+# authentication errors, and automated reviewer threads.
+DEV_RE = re.compile(
+    r"(?:\bgit\s+(?:add|apply|commit|diff|fetch|merge|push|rebase|status|worktree)\b"
+    r"|\b(?:pytest|unittest|cmake|ctest|ninja|make|sbatch|cargo\s+test|npm\s+test)\b"
+    r"|\b(?:implemented|implementation|tests? passed|changes are uncommitted|committed|merged)\b)",
+    re.IGNORECASE,
+)
+STRONG_CALL_RE = re.compile(
+    r"(?:\bapply_patch\b"
+    r"|\bgit\s+(?:add|apply|commit|merge|push|rebase)\b"
+    r"|\b(?:pytest|unittest|cmake|ctest|ninja|make|sbatch|cargo\s+test|npm\s+test|pip\s+install)\b)",
+    re.IGNORECASE,
+)
+RESULT_RE = re.compile(
+    r"\b(?:implemented|committed|pushed|updated|completed successfully|changes are uncommitted|tests? passed)\b",
+    re.IGNORECASE,
+)
+UTILITY_RE = re.compile(
+    r"(?:\blist (?:the )?(?:top )?(?:two|2|three|3)?\s*recent tasks?\b"
+    r"|\b(?:check|review) (?:my )?(?:home )?(?:disk )?space\b"
+    r"|\bunauthorized\b|\bincorrect api key\b)",
+    re.IGNORECASE,
+)
+TEMP_PREFIXES = ("/tmp/", "/var/tmp/", "/lscratch/", "/sdf/scratch/")
+
+
+def run(argv, cwd=None, check=True):
+    """Run a short local command on sdfiana and return decoded stdout."""
+    try:
+        output = subprocess.check_output(
+            argv, cwd=cwd, stderr=subprocess.DEVNULL, timeout=8
+        )
+        return output.decode("utf-8", "replace").strip()
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        if check:
+            raise
+        return ""
+
+
+def tmux(*args):
+    return run(["tmux"] + list(args), check=False)
+
+
+def has_tmux_session():
+    return subprocess.call(
+        ["tmux", "has-session", "-t", SESSION],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ) == 0
+
+
+def select_codex_executable():
+    """Use the CLI release that matches the active shared app-server.
+
+    The Desktop/SSH app-server can outlive a CLI upgrade.  A newer resume
+    client may ask the older server for database tables it does not implement.
+    /proc identifies the exact executable behind the live server without
+    restarting it or changing Codex state.
+    """
+    candidates = []
+    proc_root = "/proc"
+    try:
+        entries = os.listdir(proc_root)
+    except OSError:
+        entries = []
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        proc_dir = os.path.join(proc_root, entry)
+        try:
+            if os.stat(proc_dir).st_uid != os.getuid():
+                continue
+            with open(os.path.join(proc_dir, "cmdline"), "rb") as stream:
+                argv = [part.decode("utf-8", "replace") for part in stream.read().split(b"\0") if part]
+            if "app-server" not in argv or "--listen" not in argv:
+                continue
+            executable = os.path.realpath(os.path.join(proc_dir, "exe"))
+            if os.path.isfile(executable) and os.access(executable, os.X_OK):
+                candidates.append((int(entry), executable))
+        except OSError:
+            continue
+    if candidates:
+        # Prefer the newest live server if an old orphan also exists.
+        return max(candidates)[1], "unix://"
+    return shutil.which("codex"), None
+
+
+def recent_events(path):
+    """Read only the tail of a rollout; sessions can become very large."""
+    if not path or not os.path.isfile(path):
+        return []
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as stream:
+            if size > TAIL_BYTES:
+                stream.seek(size - TAIL_BYTES)
+                stream.readline()  # discard a partial JSONL record
+            data = stream.read().decode("utf-8", "replace")
+    except OSError:
+        return []
+    events = []
+    for line in data.splitlines():
+        try:
+            events.append(json.loads(line))
+        except (TypeError, ValueError):
+            continue
+    return events
+
+
+def content_text(content):
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts = []
+    for item in content:
+        if isinstance(item, dict):
+            text = item.get("text")
+            if text:
+                parts.append(str(text))
+    return "\n".join(parts)
+
+
+def rollout_summary(events):
+    """Extract lightweight signals without depending on Codex internals deeply."""
+    latest_user = ""
+    latest_final = ""
+    calls = []
+    workdirs = []
+    has_patch = False
+
+    for event in events:
+        payload = event.get("payload") or {}
+        ptype = payload.get("type")
+        if ptype == "message" and payload.get("role") == "user":
+            text = content_text(payload.get("content"))
+            if text:
+                latest_user = text
+        elif ptype == "task_complete":
+            text = payload.get("last_agent_message") or ""
+            if text:
+                latest_final = str(text)
+        elif ptype == "custom_tool_call":
+            name = str(payload.get("name") or "")
+            raw = payload.get("input") or ""
+            if not isinstance(raw, str):
+                try:
+                    raw = json.dumps(raw, sort_keys=True)
+                except TypeError:
+                    raw = str(raw)
+            calls.append(name + " " + raw)
+            if name == "apply_patch":
+                has_patch = True
+            for match in WORKDIR_RE.finditer(raw):
+                workdirs.append(match.group(1))
+
+    recent_calls = "\n".join(calls[-120:])
+    combined = recent_calls + "\n" + latest_final
+    return {
+        "latest_user": latest_user,
+        "latest_final": latest_final,
+        "workdirs": workdirs[-160:],
+        "meaningful": bool(has_patch or DEV_RE.search(combined)),
+        "strong": bool(has_patch or STRONG_CALL_RE.search(recent_calls)),
+        "resultful": bool(RESULT_RE.search(latest_final)),
+    }
+
+
+def git_info(path):
+    """Return canonical Git metadata for path, or None."""
+    if not path:
+        return None
+    path = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(path):
+        return None
+    root = run(["git", "-C", path, "rev-parse", "--show-toplevel"], check=False)
+    if not root:
+        return None
+    branch = run(["git", "-C", root, "branch", "--show-current"], check=False)
+    origin = run(["git", "-C", root, "remote", "get-url", "origin"], check=False)
+    sha = run(["git", "-C", root, "rev-parse", "HEAD"], check=False)
+    return {"root": root, "branch": branch, "origin": origin, "sha": sha}
+
+
+def normalize_origin(origin):
+    value = (origin or "").strip().lower()
+    value = re.sub(r"\.git$", "", value)
+    value = value.replace("https://github.com/", "github.com:")
+    value = value.replace("ssh://git@github.com/", "github.com:")
+    value = value.replace("git@github.com:", "github.com:")
+    return value
+
+
+def parse_worktrees(repo_root):
+    output = run(["git", "-C", repo_root, "worktree", "list", "--porcelain"], check=False)
+    records = []
+    current = {}
+    for line in output.splitlines() + [""]:
+        if not line:
+            if current:
+                records.append(current)
+                current = {}
+            continue
+        key, _, value = line.partition(" ")
+        current[key] = value
+    return records
+
+
+def resolve_moved_worktree(row, all_rows):
+    """Resolve a missing original CWD using exact origin/branch Git metadata."""
+    wanted_origin = normalize_origin(row["git_origin_url"])
+    wanted_branch = row["git_branch"] or ""
+    wanted_sha = row["git_sha"] or ""
+    if not wanted_origin:
+        return None
+
+    seen_roots = set()
+    for other in all_rows:
+        info = git_info(other["cwd"])
+        if not info or info["root"] in seen_roots:
+            continue
+        seen_roots.add(info["root"])
+        if normalize_origin(info["origin"]) != wanted_origin:
+            continue
+        for item in parse_worktrees(info["root"]):
+            path = item.get("worktree")
+            if not path or not os.path.isdir(path):
+                continue
+            branch = item.get("branch", "")
+            sha = item.get("HEAD", "")
+            if wanted_branch and branch == "refs/heads/" + wanted_branch:
+                return git_info(path)
+            if not wanted_branch and wanted_sha and sha == wanted_sha:
+                return git_info(path)
+    return None
+
+
+def effective_git(row, summary, all_rows):
+    """Prefer Codex's CWD, but honor a persistent repo used repeatedly later."""
+    base = git_info(row["cwd"])
+    counts = collections.Counter()
+    last_seen = {}
+    for position, raw_path in enumerate(summary["workdirs"]):
+        path = os.path.abspath(os.path.expanduser(raw_path))
+        if path.startswith(TEMP_PREFIXES):
+            continue
+        info = git_info(path)
+        if info:
+            counts[info["root"]] += 1
+            last_seen[info["root"]] = position
+
+    if counts:
+        root, count = max(counts.items(), key=lambda item: (item[1], last_seen[item[0]]))
+        # Two explicit commands are enough to correct a session launched from
+        # the wrong repo (as happened for the daq-agent task).
+        if count >= 2 and (not base or root != base["root"]):
+            return git_info(root)
+    if base:
+        return base
+    return resolve_moved_worktree(row, all_rows)
+
+
+def db_rows():
+    db = os.path.expanduser("~/.codex/state_5.sqlite")
+    if not os.path.isfile(db):
+        raise RuntimeError("Codex state database not found: " + db)
+    connection = sqlite3.connect("file:" + db + "?mode=ro", uri=True, timeout=4)
+    connection.row_factory = sqlite3.Row
+    query = """
+        SELECT t.id, t.rollout_path, t.updated_at, t.updated_at_ms,
+               t.recency_at_ms, t.cwd, t.title, t.git_sha, t.git_branch,
+               t.git_origin_url, t.source, t.thread_source, t.archived
+          FROM threads AS t
+          LEFT JOIN thread_spawn_edges AS edge ON edge.child_thread_id = t.id
+         WHERE t.archived = 0
+           AND edge.child_thread_id IS NULL
+           AND COALESCE(t.thread_source, t.source) = ?
+         ORDER BY COALESCE(NULLIF(t.recency_at_ms, 0),
+                           NULLIF(t.updated_at_ms, 0), t.updated_at * 1000) DESC
+         LIMIT 40
+    """
+    try:
+        return list(connection.execute(query, ("user",)))
+    finally:
+        connection.close()
+
+
+def repo_name(info, row):
+    origin = (info or {}).get("origin") or row["git_origin_url"] or ""
+    if origin:
+        name = origin.rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+        return re.sub(r"\.git$", "", name)
+    root = (info or {}).get("root") or row["cwd"] or "unknown"
+    return os.path.basename(root.rstrip("/")) or "unknown"
+
+
+def activity_ms(row):
+    return row["recency_at_ms"] or row["updated_at_ms"] or (row["updated_at"] or 0) * 1000
+
+
+def activity_text(row):
+    stamp = activity_ms(row) / 1000.0
+    return time.strftime("%Y-%m-%d %H:%M:%S %Z", time.localtime(stamp))
+
+
+def task_label(row, summary, info):
+    corpus = " ".join(
+        [str(row["title"] or ""), summary["latest_user"], summary["latest_final"]]
+    ).lower()
+    normalized_corpus = re.sub(r"[_-]+", " ", corpus)
+    if "user kernel" in normalized_corpus:
+        return "user-kernel"
+    if "feespec" in corpus or "jf current performance" in corpus:
+        return "jf-feespec"
+    if "task-transfer" in corpus or "task transfer" in corpus:
+        return "daq-task-transfer"
+
+    branch = (info or {}).get("branch") or row["git_branch"] or ""
+    label = branch.rsplit("/", 1)[-1]
+    label = re.sub(r"^(?:psana2-|lcls2-)", "", label)
+    if not label:
+        label = repo_name(info, row)
+    label = re.sub(r"[^A-Za-z0-9_.-]+", "-", label).strip("-.")
+    return (label or "codex-task")[:26]
+
+
+def choose_tasks():
+    rows = db_rows()
+    candidates = []
+    fallback = []
+    for row in rows:
+        if not UUID_RE.match(row["id"] or ""):
+            continue
+        events = recent_events(row["rollout_path"])
+        summary = rollout_summary(events)
+        generic_utility = bool(UTILITY_RE.search(str(row["title"] or "")))
+        item = (row, summary)
+        # A generic utility thread is promoted only after it actually performs
+        # strong development actions.  This lets a "list tasks" conversation
+        # that evolved into implementation qualify, while a disk-space thread
+        # that merely inspected Git remains excluded.
+        if (not generic_utility and summary["meaningful"]) or (
+            generic_utility and summary["strong"] and summary["resultful"]
+        ):
+            candidates.append(item)
+        elif not generic_utility:
+            fallback.append(item)
+
+    # A continuation of the same Codex thread keeps its UUID.  Exact duplicate
+    # rows are nevertheless suppressed defensively; reviewer/subagent children
+    # were excluded in the SQL query above.
+    selected = []
+    seen_ids = set()
+    seen_task_keys = set()
+    for row, summary in candidates + fallback:
+        if row["id"] in seen_ids:
+            continue
+        seen_ids.add(row["id"])
+        info = effective_git(row, summary, rows)
+        label = task_label(row, summary, info)
+        live_branch = (info or {}).get("branch") or ""
+        stored_branch = row["git_branch"] or ""
+        same_repo = bool(
+            info
+            and normalize_origin(info.get("origin"))
+            == normalize_origin(row["git_origin_url"])
+        )
+        branch_drift = bool(
+            same_repo and stored_branch and live_branch and stored_branch != live_branch
+        )
+        task = {
+            "id": row["id"],
+            "last_active": activity_text(row),
+            "title": str(row["title"] or "Codex task").replace("\n", " "),
+            "repo": repo_name(info, row),
+            "branch": live_branch or stored_branch or "(detached/unknown)",
+            "stored_branch": stored_branch,
+            "branch_drift": branch_drift,
+            "worktree": (info or {}).get("root") or row["cwd"] or "",
+            "resolved": bool(info and os.path.isdir(info["root"])),
+            "label": label,
+        }
+        # A new thread is sometimes started from the handoff of an immediately
+        # preceding task.  Collapse that continuation only when its semantic
+        # label and exact live Git location also match.  Sessions such as the
+        # JF benchmark remain separate even when they share the same worktree.
+        task_key = (task["worktree"], task["branch"], task["label"])
+        if task_key in seen_task_keys:
+            continue
+        seen_task_keys.add(task_key)
+        selected.append(task)
+        if len(selected) == MAX_TASKS:
+            break
+    return selected
+
+
+def unique_window_names(tasks):
+    used = set()
+    for task in tasks:
+        base = task["label"][:26]
+        name = base
+        counter = 2
+        while name in used:
+            suffix = "-" + str(counter)
+            name = base[: 30 - len(suffix)] + suffix
+            counter += 1
+        used.add(name)
+        task["window"] = name
+
+
+def print_tasks(tasks):
+    print("Task  Last active              Repository  Branch                                  Worktree")
+    print("----  -----------------------  ----------  --------------------------------------  --------")
+    for number, task in enumerate(tasks, 1):
+        marker = "" if task["resolved"] else " [UNRESOLVED]"
+        print(
+            "{:<4}  {:<23}  {:<10}  {:<38}  {}{}".format(
+                number,
+                task["last_active"],
+                task["repo"][:10],
+                task["branch"][:38],
+                task["worktree"],
+                marker,
+            )
+        )
+        print("      session={}  window={}  {}".format(task["id"], task["window"], task["title"][:110]))
+        if task["branch_drift"]:
+            print(
+                "      note: session recorded branch {}; worktree is now on {}".format(
+                    task["stored_branch"], task["branch"]
+                )
+            )
+    if not tasks:
+        print("No resumable development sessions were found.")
+
+
+def pane_command(task, codex_executable, remote_address, inline=False):
+    wanted = task["worktree"]
+    fallback = os.path.expanduser("~")
+    start = wanted if task["resolved"] else fallback
+    lines = [
+        "printf '\\033]0;%s\\007' " + shlex.quote(task["window"]),
+        "echo 'sdfwork: {}'".format(task["title"][:120].replace("'", "'\\''")),
+    ]
+    if task["resolved"]:
+        lines.extend(
+            [
+                "cd -- " + shlex.quote(wanted),
+                "echo 'worktree: '" + shlex.quote(wanted),
+                "echo 'session:  '" + shlex.quote(task["id"]),
+            ]
+        )
+        if task["branch_drift"]:
+            lines.extend(
+                [
+                    "echo 'sdfwork: note: this session recorded branch "
+                    + task["stored_branch"].replace("'", "'\\''")
+                    + "'",
+                    "echo '         the worktree is now on "
+                    + task["branch"].replace("'", "'\\''")
+                    + "; no branch was changed'",
+                ]
+            )
+        # Remote resumes reject per-command approval overrides.  They inherit
+        # approval_policy/approvals_reviewer from ~/.codex/config.toml instead.
+        approval_flag = "" if remote_address else " --approve-for-me"
+        resume_command = (
+            shlex.quote(codex_executable)
+            + " resume"
+            + approval_flag
+            + (" --remote " + shlex.quote(remote_address) if remote_address else "")
+            + (" --no-alt-screen" if inline else "")
+            + " -C "
+            + shlex.quote(wanted)
+            + " "
+            + shlex.quote(task["id"])
+        )
+        lines.extend(
+            [
+                resume_command,
+                "status=$?",
+                "echo",
+                "echo \"sdfwork: Codex resume exited with status $status.\"",
+                "echo 'You are still in the intended worktree; retry with:'",
+                "echo " + shlex.quote("  " + resume_command),
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "cd -- " + shlex.quote(fallback),
+                "echo 'sdfwork: could not resolve the recorded worktree:'",
+                "echo '  " + wanted.replace("'", "'\\''") + "'",
+                "echo 'No replacement was created. Use sdfwork --list for details.'",
+            ]
+        )
+    lines.append("exec \"${SHELL:-/bin/bash}\" -l")
+    script = "; ".join(lines)
+    return start, "bash -lc " + shlex.quote(script)
+
+
+def create_workspace(tasks, codex_executable, remote_address):
+    if not tasks:
+        subprocess.check_call(["tmux", "new-session", "-d", "-s", SESSION, "-n", "no-tasks"])
+        tmux("send-keys", "-t", SESSION + ":no-tasks", "echo 'sdfwork: no resumable development sessions found'", "C-m")
+        return
+
+    unique_window_names(tasks)
+    for index, task in enumerate(tasks):
+        start, command = pane_command(task, codex_executable, remote_address)
+        if index == 0:
+            argv = ["tmux", "new-session", "-d", "-s", SESSION, "-n", task["window"], "-c", start, command]
+        else:
+            argv = ["tmux", "new-window", "-d", "-t", SESSION, "-n", task["window"], "-c", start, command]
+        subprocess.check_call(argv)
+
+    tmux("set-option", "-t", SESSION, "remain-on-exit", "off")
+    tmux("set-option", "-t", SESSION, "@sdfwork_version", VERSION)
+    tmux("set-option", "-t", SESSION, "@sdfwork_task_ids", ",".join(task["id"] for task in tasks))
+    tmux("set-option", "-t", SESSION, "@sdfwork_created", datetime.datetime.now().isoformat())
+    tmux("select-window", "-t", SESSION + ":" + tasks[0]["window"])
+
+
+def session_is_stale():
+    states = tmux("list-panes", "-t", SESSION, "-a", "-F", "#{pane_dead}").splitlines()
+    return bool(states) and all(state.strip() == "1" for state in states)
+
+
+def attach(no_attach):
+    if no_attach:
+        print("sdfwork: workspace is ready; not attaching (--no-attach).")
+        return
+    os.execvp("tmux", ["tmux", "attach-session", "-t", SESSION])
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Discover or restore recent Codex tasks")
+    parser.add_argument("--reset", action="store_true", help="rebuild the sdf-work tmux session")
+    parser.add_argument("--list", action="store_true", help="show the tasks selected now and exit")
+    parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--terminal", metavar="SESSION_ID", help=argparse.SUPPRESS)
+    parser.add_argument("--no-attach", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args()
+
+    codex_executable, remote_address = select_codex_executable()
+    if not codex_executable or not run([codex_executable, "--version"], check=False):
+        raise RuntimeError("codex is not available on sdfiana")
+
+    tasks = choose_tasks()
+    unique_window_names(tasks)
+
+    if args.terminal:
+        task = next((item for item in tasks if item["id"] == args.terminal), None)
+        if task is None:
+            raise RuntimeError("session {} is no longer in the selected task set".format(args.terminal))
+        start, command = pane_command(task, codex_executable, remote_address, inline=True)
+        os.chdir(start)
+        os.execvp("bash", ["bash", "-lc", command])
+
+    if args.json:
+        payload = {
+            "codex_executable": codex_executable,
+            "remote_address": remote_address,
+            "tasks": [
+                {
+                    "id": task["id"],
+                    "title": task["title"],
+                    "window": task["window"],
+                    "repo": task["repo"],
+                    "branch": task["branch"],
+                    "stored_branch": task["stored_branch"],
+                    "branch_drift": task["branch_drift"],
+                    "worktree": task["worktree"],
+                    "resolved": task["resolved"],
+                    "last_active": task["last_active"],
+                }
+                for task in tasks
+            ],
+        }
+        print(json.dumps(payload, sort_keys=True))
+        return 0
+
+    print(
+        "sdfwork: resume client {} ({})".format(
+            codex_executable,
+            run([codex_executable, "--version"], check=False)
+            + ("; remote=" + remote_address if remote_address else ""),
+        )
+    )
+
+    print_tasks(tasks)
+
+    if args.list:
+        return 0
+
+    if not run(["tmux", "-V"], check=False):
+        raise RuntimeError("tmux is not installed on sdfiana")
+
+    if has_tmux_session() and (args.reset or session_is_stale()):
+        reason = "--reset requested" if args.reset else "all panes are dead"
+        print("sdfwork: rebuilding {} ({})".format(SESSION, reason))
+        subprocess.check_call(["tmux", "kill-session", "-t", SESSION])
+
+    if has_tmux_session():
+        previous = tmux("show-options", "-v", "-t", SESSION, "@sdfwork_task_ids")
+        current = ",".join(task["id"] for task in tasks)
+        if previous and previous != current:
+            print("sdfwork: the existing workspace has an older task selection.")
+            print("sdfwork: reattaching it; run 'sdfwork --reset' to use the list above.")
+        else:
+            print("sdfwork: reattaching existing tmux session {}".format(SESSION))
+        attach(args.no_attach)
+        return 0
+
+    create_workspace(tasks, codex_executable, remote_address)
+    print("sdfwork: created tmux session {}".format(SESSION))
+    attach(args.no_attach)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)
+    except Exception as error:
+        print("sdfwork: error: {}".format(error), file=sys.stderr)
+        sys.exit(1)
