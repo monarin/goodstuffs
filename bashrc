@@ -117,6 +117,14 @@ see_kerberos_cred() {
     klist
 }
 
+# Renew this host's ticket, or request a new renewable ticket if needed.
+krb() {
+    command kinit -R 2>/dev/null ||
+        command kinit -r 7d monarin@SLAC.STANFORD.EDU ||
+        return
+    command klist -f
+}
+
 see_dir_total() {
     du -shc ./*
 }
@@ -514,8 +522,15 @@ nsys_report_screen() {
 }
 
 activate_psana2_gpu_cupy() {
+    local nsys_bin="$HOME/tools/nsight-systems-cli-2025.3.1/bin"
+
     export CUDA_PATH="$HOME/.local/share/psana2-gpu/cuda12shim"
     export LD_LIBRARY_PATH="$CUDA_PATH/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export OMPI_MCA_btl='^smcuda'
+    case ":$PATH:" in
+        *":$nsys_bin:"*) ;;
+        *) export PATH="$nsys_bin:$PATH" ;;
+    esac
 }
 
 activate_mps() {
@@ -631,17 +646,17 @@ for i in range(cp.cuda.runtime.getDeviceCount()):
 PY
 }
 
-codex_skills_port() {
+# Personal skills shared by Claude Code and Codex: clone-or-pull ~/agent-skills
+# and symlink every skill into ~/.claude/skills and ~/.codex/skills.
+# Link logic lives in the repo: ~/agent-skills/scripts/sync-skills.sh
+agent_skills_sync() {
     local repo_url="${1:-git@github.com:monarin/codex-skills.git}"
-    local repo_dir="${CODEX_SKILLS_REPO:-$HOME/codex-skills}"
-    local skills_dir="${CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
+    local repo_dir="${AGENT_SKILLS_REPO:-$HOME/agent-skills}"
 
     if ! command -v git >/dev/null 2>&1; then
         echo "git not found" >&2
         return 1
     fi
-
-    mkdir -p "$(dirname "$repo_dir")" "$skills_dir"
 
     if [[ -d "$repo_dir/.git" ]]; then
         if git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
@@ -658,23 +673,10 @@ codex_skills_port() {
         git clone "$repo_url" "$repo_dir" || return $?
     fi
 
-    local skill_path skill_name target
-    for skill_path in "$repo_dir"/*; do
-        [[ -d "$skill_path" ]] || continue
-        [[ -f "$skill_path/SKILL.md" ]] || continue
-
-        skill_name="$(basename "$skill_path")"
-        target="$skills_dir/$skill_name"
-
-        if [[ -e "$target" && ! -L "$target" ]]; then
-            echo "Skipping $skill_name: $target exists and is not a symlink" >&2
-            continue
-        fi
-
-        ln -sfn "$skill_path" "$target"
-        echo "Linked $skill_name -> $skill_path"
-    done
+    "$repo_dir/scripts/sync-skills.sh" link
 }
+# Old name kept for muscle memory.
+codex_skills_port() { agent_skills_sync "$@"; }
 
 alias masked="QT_AUTO_SCREEN_SCALE_FACTOR=0 QT_SCALE_FACTOR=1 QT_FONT_DPI=96 masked"
 
