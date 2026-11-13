@@ -12,7 +12,7 @@ Usage: renew_remote_access [--status] [--with-ssh-agent] [--with-nersc]
 
 Prepare this host's Kerberos ticket. On sdfiana, pass --with-ssh-agent to load
 its encrypted local key and --with-nersc to renew its separate Perlmutter
-credential through a printed federated-login URL.
+credential through an interactive NERSC password-plus-OTP prompt.
 EOF
 }
 
@@ -60,7 +60,7 @@ else
   fi
   run_step "SDF Kerberos" "${REMOTE_ACCESS_KRB_HELPER:-${script_dir}/renew_sdf_krb}"
   if [[ "$with_nersc" -eq 1 ]]; then
-    run_step "NERSC from $(hostname -s)" "${REMOTE_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --fedid --no-browser
+    run_step "NERSC from $(hostname -s)" "${REMOTE_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}"
   fi
 fi
 

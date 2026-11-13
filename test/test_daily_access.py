@@ -120,7 +120,7 @@ class DailyAccessTests(unittest.TestCase):
             )
             self.assertEqual(
                 trace.read_text().splitlines(),
-                ["agent:", "krb:", "nersc:--fedid --no-browser"],
+                ["agent:", "krb:", "nersc:"],
             )
 
     def test_remote_status_is_read_only_and_aggregates_failure(self):

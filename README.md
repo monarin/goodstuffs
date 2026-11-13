@@ -35,7 +35,8 @@ This interactive workflow prepares each independent credential in order:
 - the Mac's NERSC `sshproxy` key through browser federated login;
 - `sdfiana`'s encrypted local SSH key in its host-local agent, plus its
   Kerberos cache;
-- `sdfiana`'s separate NERSC key through a URL opened on the Mac; and
+- `sdfiana`'s separate NERSC key through password plus OTP entered in the
+  terminal; and
 - the host-local Kerberos cache on `psbuildrc`.
 
 Use `renew_daily_access --status` for a read-only check. The renewal command
@@ -77,9 +78,8 @@ before using the command from the Mac.
 
 NERSC `sshproxy` is installed separately from the official packages at
 <https://portal.nersc.gov/cfs/mfa/>. Run `renew_nersc_key --fedid` on the Mac,
-or `renew_nersc_key --fedid --no-browser` on `sdfiana`, to create the separate
-24-hour credentials. The no-browser form prints a URL for completing Google
-authentication on the Mac.
+or run `renew_nersc_key` in an interactive `sdfiana` terminal and enter the
+NERSC password plus OTP there. The two machines receive separate credentials.
 
 ## SDF development workspace
 
