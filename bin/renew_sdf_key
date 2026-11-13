@@ -75,6 +75,8 @@ if [[ "$mode" == status ]]; then
     -o NumberOfPasswordPrompts=0 \
     -o ConnectTimeout=20 \
     -o ConnectionAttempts=1 \
+    -o ControlMaster=no \
+    -o ControlPath=none \
     -o IdentitiesOnly=yes \
     -i "$key" \
     "${jump_user}@${jump_host}" true
@@ -83,4 +85,8 @@ if [[ "$mode" == status ]]; then
 fi
 
 echo "Refreshing ${key}.pub on ${jump_user}@${jump_host}"
-"${SDF_SSH_COPY_ID_COMMAND:-ssh-copy-id}" -i "${key}.pub" "${jump_user}@${jump_host}"
+"${SDF_SSH_COPY_ID_COMMAND:-ssh-copy-id}" \
+  -i "${key}.pub" \
+  -o ControlMaster=no \
+  -o ControlPath=none \
+  "${jump_user}@${jump_host}"

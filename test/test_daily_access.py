@@ -1,5 +1,6 @@
 import os
 import pathlib
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -42,10 +43,38 @@ class DailyAccessTests(unittest.TestCase):
             lines = trace.read_text().splitlines()
             self.assertEqual(lines[0], "s3df:")
             self.assertEqual(lines[1], "nersc:--status")
+            self.assertTrue(lines[2].startswith("ssh:-tt "))
             self.assertIn("sdfiana", lines[2])
             self.assertIn("renew_remote_access --status --with-nersc", lines[2])
             self.assertIn("psbuildrc", lines[3])
             self.assertIn("renew_remote_access --status", lines[3])
+
+    def test_installed_mac_copy_finds_verifier_under_goodstuffs(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = pathlib.Path(raw)
+            bindir, trace, env = self.base_env(temp)
+            home = temp / "home"
+            installed_bin = home / "bin"
+            verifier_dir = home / "goodstuffs/scripts"
+            installed_bin.mkdir(parents=True)
+            verifier_dir.mkdir(parents=True)
+            installed = installed_bin / "renew_daily_access"
+            shutil.copy2(ROOT / "bin/renew_daily_access", installed)
+            write_executable(bindir / "uname", '[[ "${1-}" == "-s" ]] && echo Darwin || /usr/bin/uname "$@"\n')
+            write_executable(verifier_dir / "verify-s3df-hosts.sh", 'echo "verified:$0" >> "$TRACE"\n')
+            nersc = write_executable(bindir / "nersc", 'echo "nersc:$*" >> "$TRACE"\n')
+            ssh = write_executable(bindir / "ssh", 'echo "ssh:$*" >> "$TRACE"\n')
+            env.update({
+                "HOME": str(home),
+                "DAILY_ACCESS_NERSC_HELPER": str(nersc),
+                "DAILY_ACCESS_SSH": str(ssh),
+            })
+
+            subprocess.run([installed, "--status"], env=env, check=True)
+            self.assertEqual(
+                trace.read_text().splitlines()[0],
+                f"verified:{verifier_dir / 'verify-s3df-hosts.sh'}",
+            )
 
     def test_mac_failure_is_aggregated_without_skipping_later_stages(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -121,16 +150,27 @@ class DailyAccessTests(unittest.TestCase):
                 (ssh_dir / name).write_text("test\n")
             agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\n')
             copy_id = write_executable(bindir / "copy-id", 'echo "copy:$*" >> "$TRACE"\n')
+            ssh = write_executable(bindir / "ssh", 'echo "ssh:$*" >> "$TRACE"\n')
             env.update({
                 "HOME": str(home),
                 "SSH_AGENT_START_HELPER": str(agent),
                 "SDF_SSH_COPY_ID_COMMAND": str(copy_id),
+                "SDF_SSH_COMMAND": str(ssh),
             })
 
             subprocess.run([ROOT / "bin/renew_sdf_key"], env=env, check=True)
             lines = trace.read_text().splitlines()
             self.assertEqual(lines[0], f"agent:{ssh_dir / 'id_ed25519'}")
             self.assertIn(f"-i {ssh_dir / 'id_ed25519.pub'}", lines[1])
+            self.assertIn("-o ControlMaster=no", lines[1])
+            self.assertIn("-o ControlPath=none", lines[1])
+
+            trace.write_text("")
+            subprocess.run([ROOT / "bin/renew_sdf_key", "--status"], env=env, check=True)
+            lines = trace.read_text().splitlines()
+            self.assertEqual(lines[0], f"agent:--status {ssh_dir / 'id_ed25519'}")
+            self.assertIn("-o ControlMaster=no", lines[1])
+            self.assertIn("-o ControlPath=none", lines[1])
 
     def test_agent_status_accepts_loaded_selected_key(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -163,6 +203,79 @@ class DailyAccessTests(unittest.TestCase):
                 sock.close()
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(f"SSH key loaded: {key}", result.stdout)
+
+    def test_agent_renew_installs_unit_and_adds_key_with_lifetime(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = pathlib.Path(raw)
+            bindir, trace, env = self.base_env(temp)
+            home = temp / "home"
+            ssh_dir = home / ".ssh"
+            runtime = temp / "runtime"
+            ssh_dir.mkdir(parents=True)
+            runtime.mkdir()
+            key = ssh_dir / "id_ed25519"
+            key.write_text("private-placeholder\n")
+            (ssh_dir / "id_ed25519.pub").write_text("public-placeholder\n")
+            write_executable(bindir / "uname", 'echo Linux\n')
+            write_executable(bindir / "ssh-keygen", 'echo "256 FP test"\n')
+            write_executable(bindir / "systemctl", 'echo "systemctl:$*" >> "$TRACE"\n')
+            write_executable(
+                bindir / "ssh-add",
+                'if [[ "${1-}" == "-l" ]]; then exit 1; fi\necho "ssh-add:$*" >> "$TRACE"\n',
+            )
+            env.update({"HOME": str(home), "XDG_RUNTIME_DIR": str(runtime)})
+
+            sock = socket.socket(socket.AF_UNIX)
+            try:
+                sock.bind(str(runtime / "ssh-agent.socket"))
+                subprocess.run([ROOT / "bin/ssh_agent_start"], env=env, check=True)
+            finally:
+                sock.close()
+            lines = trace.read_text().splitlines()
+            self.assertIn("systemctl:--user daemon-reload", lines)
+            self.assertIn("systemctl:--user enable --now ssh-agent.service", lines)
+            self.assertIn(f"ssh-add:-t 24h {key}", lines)
+
+    def test_kerberos_renew_falls_back_and_status_never_calls_kinit(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = pathlib.Path(raw)
+            bindir, trace, env = self.base_env(temp)
+            write_executable(bindir / "hostname", 'echo test-host\n')
+            write_executable(bindir / "date", 'echo test-date\n')
+            write_executable(
+                bindir / "kinit",
+                'echo "kinit:$*" >> "$TRACE"\n[[ "${1-}" != "-R" ]]\n',
+            )
+            write_executable(bindir / "klist", 'echo "klist:$*" >> "$TRACE"\n')
+
+            subprocess.run([ROOT / "bin/renew_sdf_krb"], env=env, check=True)
+            self.assertEqual(
+                trace.read_text().splitlines(),
+                ["kinit:-R", "kinit:-r 7d monarin@SLAC.STANFORD.EDU", "klist:-f"],
+            )
+
+            trace.write_text("")
+            subprocess.run([ROOT / "bin/renew_sdf_krb", "--status"], env=env, check=True)
+            self.assertEqual(trace.read_text().splitlines(), ["klist:-s", "klist:-f"])
+
+    def test_mac_kerberos_wrapper_continues_after_one_host_fails(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = pathlib.Path(raw)
+            bindir, trace, env = self.base_env(temp)
+            write_executable(bindir / "uname", 'echo Darwin\n')
+            write_executable(
+                bindir / "ssh",
+                'host=""\nfor arg in "$@"; do\n'
+                '  case "$arg" in sdfiana|psbuildrc) host="$arg" ;; esac\n'
+                'done\necho "ssh:$host" >> "$TRACE"\n[[ "$host" != "sdfiana" ]]\n',
+            )
+
+            result = subprocess.run([ROOT / "bin/renew_s3df_krb", "--status"], env=env)
+            self.assertEqual(result.returncode, 1)
+            lines = trace.read_text().splitlines()
+            self.assertEqual(len(lines), 2)
+            self.assertIn("sdfiana", lines[0])
+            self.assertIn("psbuildrc", lines[1])
 
     def test_nersc_fedid_no_browser_and_status_arguments(self):
         with tempfile.TemporaryDirectory() as raw:

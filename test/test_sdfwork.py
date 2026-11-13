@@ -22,7 +22,7 @@ class SdfworkTests(unittest.TestCase):
             "bin/install-sdfwork",
             "scripts/verify-s3df-hosts.sh",
         ):
-            subprocess.run(["bash", "-n", str(ROOT / relative)], check=True)
+            subprocess.run(["/bin/bash", "-n", str(ROOT / relative)], check=True)
 
     def test_python_scripts_compile(self):
         for relative in ("bin/sdfwork-terminal", "bin/sdfwork-remote"):

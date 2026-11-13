@@ -61,8 +61,13 @@ renew_sdf_krb
 `renew_sdf_key` starts/reuses the persistent agent, loads the host's encrypted
 key, and refreshes its public-key registration on `jump.slac.stanford.edu`.
 `renew_sdf_krb` first tries password-free renewal; if the ticket is expired,
-non-renewable, or at the end of its renewal window, it prompts for a fresh one.
+non-renewable, or past its renewal deadline, it prompts for a fresh one.
 Each command supports `--status` for a read-only check.
+
+The workflow implementation must be present in `~/goodstuffs` on both remote
+homes. Update the `sdfiana` and `psbuildrc` checkouts independently, preserving
+any host-local changes, then start a new shell (or source `~/goodstuffs/bashrc`)
+before using the command from the Mac.
 
 NERSC `sshproxy` is installed separately from the official packages at
 <https://portal.nersc.gov/cfs/mfa/>. Run `renew_nersc_key --fedid` on the Mac,
