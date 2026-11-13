@@ -307,8 +307,11 @@ ssh_agent_start() {
 
 renew_sdf_key() {
     "$HOME/goodstuffs/bin/renew_sdf_key" "$@" || return $?
-    export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
-    unset SSH_AGENT_PID
+    local socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
+    if [[ -S "$socket" ]]; then
+        export SSH_AUTH_SOCK="$socket"
+        unset SSH_AGENT_PID
+    fi
 }
 
 renew_sdf_krb() {

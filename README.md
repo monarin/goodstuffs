@@ -35,7 +35,8 @@ This interactive workflow prepares each independent credential in order:
 - the Mac's NERSC `sshproxy` key through browser federated login;
 - the encrypted SDF SSH key and host-local Kerberos cache on `sdfiana`;
 - `sdfiana`'s separate NERSC key through a URL opened on the Mac; and
-- the encrypted SDF SSH key and host-local Kerberos cache on `psbuildrc`.
+- the unencrypted SDF SSH key registration and host-local Kerberos cache on
+  `psbuildrc`.
 
 Use `renew_daily_access --status` for a read-only check. The renewal command
 keeps passphrase, password, and federated-login prompts attached to the current
@@ -50,7 +51,7 @@ renew_s3df_key
 Complete Stanford SSO and Duo in the dedicated Chrome window if prompted.
 The command verifies `sdflogin`, `psbuildrc`, and `sdfiana` before it finishes.
 
-On either remote host, the individual commands are:
+On `sdfiana`, the individual commands are:
 
 ```bash
 ssh_agent_start
@@ -58,8 +59,14 @@ renew_sdf_key
 renew_sdf_krb
 ```
 
-`renew_sdf_key` starts/reuses the persistent agent, loads the host's encrypted
-key, and refreshes its public-key registration on `jump.slac.stanford.edu`.
+`ssh_agent_start` invokes `ssh-add`, which asks for the passphrase protecting
+`~/.ssh/id_ed25519`. `renew_sdf_key` calls that helper automatically before it
+refreshes the public-key registration on `jump.slac.stanford.edu`.
+
+On `psbuildrc`, `~/.ssh/id_rsa` is a separate unencrypted key. Run
+`renew_sdf_key` and `renew_sdf_krb`; the key-renewal helper detects that no
+passphrase is required and skips the agent.
+
 `renew_sdf_krb` first tries password-free renewal; if the ticket is expired,
 non-renewable, or past its renewal deadline, it prompts for a fresh one.
 Each command supports `--status` for a read-only check.

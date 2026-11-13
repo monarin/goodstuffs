@@ -139,7 +139,7 @@ class DailyAccessTests(unittest.TestCase):
                 ["key:--status", "krb:--status", "nersc:--status"],
             )
 
-    def test_sdf_key_prefers_ed25519_and_calls_agent_before_registration(self):
+    def test_encrypted_sdf_key_calls_agent_before_registration(self):
         with tempfile.TemporaryDirectory() as raw:
             temp = pathlib.Path(raw)
             bindir, trace, env = self.base_env(temp)
@@ -151,11 +151,13 @@ class DailyAccessTests(unittest.TestCase):
             agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\n')
             copy_id = write_executable(bindir / "copy-id", 'echo "copy:$*" >> "$TRACE"\n')
             ssh = write_executable(bindir / "ssh", 'echo "ssh:$*" >> "$TRACE"\n')
+            keygen = write_executable(bindir / "keygen", 'exit 1\n')
             env.update({
                 "HOME": str(home),
                 "SSH_AGENT_START_HELPER": str(agent),
                 "SDF_SSH_COPY_ID_COMMAND": str(copy_id),
                 "SDF_SSH_COMMAND": str(ssh),
+                "SDF_SSH_KEYGEN_COMMAND": str(keygen),
             })
 
             subprocess.run([ROOT / "bin/renew_sdf_key"], env=env, check=True)
@@ -171,6 +173,42 @@ class DailyAccessTests(unittest.TestCase):
             self.assertEqual(lines[0], f"agent:--status {ssh_dir / 'id_ed25519'}")
             self.assertIn("-o ControlMaster=no", lines[1])
             self.assertIn("-o ControlPath=none", lines[1])
+
+    def test_unencrypted_rsa_key_skips_agent(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = pathlib.Path(raw)
+            bindir, trace, env = self.base_env(temp)
+            home = temp / "home"
+            ssh_dir = home / ".ssh"
+            ssh_dir.mkdir(parents=True)
+            key = ssh_dir / "id_rsa"
+            key.write_text("private-placeholder\n")
+            (ssh_dir / "id_rsa.pub").write_text("public-placeholder\n")
+            agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\n')
+            copy_id = write_executable(bindir / "copy-id", 'echo "copy:$*" >> "$TRACE"\n')
+            ssh = write_executable(bindir / "ssh", 'echo "ssh:$*" >> "$TRACE"\n')
+            keygen = write_executable(bindir / "keygen", 'exit 0\n')
+            env.update({
+                "HOME": str(home),
+                "SSH_AGENT_START_HELPER": str(agent),
+                "SDF_SSH_COPY_ID_COMMAND": str(copy_id),
+                "SDF_SSH_COMMAND": str(ssh),
+                "SDF_SSH_KEYGEN_COMMAND": str(keygen),
+            })
+
+            result = subprocess.run(
+                [ROOT / "bin/renew_sdf_key"], env=env, text=True, capture_output=True, check=True
+            )
+            lines = trace.read_text().splitlines()
+            self.assertEqual(len(lines), 1)
+            self.assertTrue(lines[0].startswith("copy:"))
+            self.assertIn("no agent is required", result.stdout)
+
+            trace.write_text("")
+            subprocess.run([ROOT / "bin/renew_sdf_key", "--status"], env=env, check=True)
+            lines = trace.read_text().splitlines()
+            self.assertEqual(len(lines), 1)
+            self.assertTrue(lines[0].startswith("ssh:"))
 
     def test_agent_status_accepts_loaded_selected_key(self):
         with tempfile.TemporaryDirectory() as raw:
