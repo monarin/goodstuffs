@@ -4,20 +4,22 @@ set -uo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 mode=renew
 with_nersc=0
+with_ssh_agent=0
 
 usage() {
   cat <<'EOF'
-Usage: renew_remote_access [--status] [--with-nersc]
+Usage: renew_remote_access [--status] [--with-ssh-agent] [--with-nersc]
 
-Prepare this SDF host's encrypted SSH key and Kerberos ticket. On sdfiana, pass
---with-nersc to also renew its separate Perlmutter credential through a printed
-federated-login URL.
+Prepare this host's Kerberos ticket. On sdfiana, pass --with-ssh-agent to load
+its encrypted local key and --with-nersc to renew its separate Perlmutter
+credential through a printed federated-login URL.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --status) mode=status ;;
+    --with-ssh-agent) with_ssh_agent=1 ;;
     --with-nersc) with_nersc=1 ;;
     -h|--help)
       usage
@@ -45,13 +47,17 @@ run_step() {
 }
 
 if [[ "$mode" == status ]]; then
-  run_step "SDF SSH key" "${REMOTE_ACCESS_SDF_KEY_HELPER:-${script_dir}/renew_sdf_key}" --status
+  if [[ "$with_ssh_agent" -eq 1 ]]; then
+    run_step "sdfiana SSH agent" "${REMOTE_ACCESS_AGENT_HELPER:-${script_dir}/ssh_agent_start}" --status
+  fi
   run_step "SDF Kerberos" "${REMOTE_ACCESS_KRB_HELPER:-${script_dir}/renew_sdf_krb}" --status
   if [[ "$with_nersc" -eq 1 ]]; then
     run_step "NERSC from $(hostname -s)" "${REMOTE_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --status
   fi
 else
-  run_step "SDF SSH key" "${REMOTE_ACCESS_SDF_KEY_HELPER:-${script_dir}/renew_sdf_key}"
+  if [[ "$with_ssh_agent" -eq 1 ]]; then
+    run_step "sdfiana SSH agent" "${REMOTE_ACCESS_AGENT_HELPER:-${script_dir}/ssh_agent_start}"
+  fi
   run_step "SDF Kerberos" "${REMOTE_ACCESS_KRB_HELPER:-${script_dir}/renew_sdf_krb}"
   if [[ "$with_nersc" -eq 1 ]]; then
     run_step "NERSC from $(hostname -s)" "${REMOTE_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --fedid --no-browser

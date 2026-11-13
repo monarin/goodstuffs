@@ -72,7 +72,7 @@ run_step "sdfiana daily access" \
   -o NumberOfPasswordPrompts=0 \
   -o ConnectTimeout=20 \
   sdfiana \
-  "${remote_root}/bin/renew_remote_access ${remote_status_arg} --with-nersc"
+  "${remote_root}/bin/renew_remote_access ${remote_status_arg} --with-ssh-agent --with-nersc"
 
 run_step "psbuildrc daily access" \
   "$ssh_command" -tt \

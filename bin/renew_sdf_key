@@ -4,19 +4,18 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 mode=renew
 key="${SDF_SSH_KEY:-}"
-jump_user="${SDF_JUMP_USER:-monarin}"
-jump_host="${SDF_JUMP_HOST:-jump.slac.stanford.edu}"
 
 usage() {
   cat <<'EOF'
 Usage: renew_sdf_key [--status] [KEY]
 
-Refresh the host key's public-key registration on jump.slac.stanford.edu. When
-the private key is passphrase-protected, start the persistent agent and let
-ssh-add prompt for its passphrase. An unencrypted key does not use the agent.
+Compatibility helper for host-local key preparation. When the private key is
+passphrase-protected, start the persistent agent and let ssh-add prompt for its
+passphrase. An unencrypted key requires no daily action. This command never
+installs a public key on another host.
 
 Options:
-  --status  Verify the agent key and jump-host login without changing them.
+  --status  Verify an encrypted key is loaded without changing agent state.
   -h, --help
             Show this help.
 EOF
@@ -76,27 +75,5 @@ if [[ "$key_requires_agent" -eq 1 ]]; then
   export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
   unset SSH_AGENT_PID
 else
-  echo "SSH key is not passphrase-protected; no agent is required: $key"
+  echo "SSH key is not passphrase-protected; no daily agent action is required: $key"
 fi
-
-if [[ "$mode" == status ]]; then
-  "${SDF_SSH_COMMAND:-ssh}" \
-    -o BatchMode=yes \
-    -o NumberOfPasswordPrompts=0 \
-    -o ConnectTimeout=20 \
-    -o ConnectionAttempts=1 \
-    -o ControlMaster=no \
-    -o ControlPath=none \
-    -o IdentitiesOnly=yes \
-    -i "$key" \
-    "${jump_user}@${jump_host}" true
-  echo "SDF jump-host key: accepted"
-  exit 0
-fi
-
-echo "Refreshing ${key}.pub on ${jump_user}@${jump_host}"
-"${SDF_SSH_COPY_ID_COMMAND:-ssh-copy-id}" \
-  -i "${key}.pub" \
-  -o ControlMaster=no \
-  -o ControlPath=none \
-  "${jump_user}@${jump_host}"

@@ -45,7 +45,9 @@ class DailyAccessTests(unittest.TestCase):
             self.assertEqual(lines[1], "nersc:--status")
             self.assertTrue(lines[2].startswith("ssh:-tt "))
             self.assertIn("sdfiana", lines[2])
-            self.assertIn("renew_remote_access --status --with-nersc", lines[2])
+            self.assertIn(
+                "renew_remote_access --status --with-ssh-agent --with-nersc", lines[2]
+            )
             self.assertIn("psbuildrc", lines[3])
             self.assertIn("renew_remote_access --status", lines[3])
 
@@ -102,44 +104,68 @@ class DailyAccessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             temp = pathlib.Path(raw)
             bindir, trace, env = self.base_env(temp)
-            key = write_executable(bindir / "key", 'echo "key:$*" >> "$TRACE"\n')
+            agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\n')
             krb = write_executable(bindir / "krb", 'echo "krb:$*" >> "$TRACE"\n')
             nersc = write_executable(bindir / "nersc", 'echo "nersc:$*" >> "$TRACE"\n')
             env.update({
-                "REMOTE_ACCESS_SDF_KEY_HELPER": str(key),
+                "REMOTE_ACCESS_AGENT_HELPER": str(agent),
                 "REMOTE_ACCESS_KRB_HELPER": str(krb),
                 "REMOTE_ACCESS_NERSC_HELPER": str(nersc),
             })
 
-            subprocess.run([ROOT / "bin/renew_remote_access", "--with-nersc"], env=env, check=True)
+            subprocess.run(
+                [ROOT / "bin/renew_remote_access", "--with-ssh-agent", "--with-nersc"],
+                env=env,
+                check=True,
+            )
             self.assertEqual(
                 trace.read_text().splitlines(),
-                ["key:", "krb:", "nersc:--fedid --no-browser"],
+                ["agent:", "krb:", "nersc:--fedid --no-browser"],
             )
 
     def test_remote_status_is_read_only_and_aggregates_failure(self):
         with tempfile.TemporaryDirectory() as raw:
             temp = pathlib.Path(raw)
             bindir, trace, env = self.base_env(temp)
-            key = write_executable(bindir / "key", 'echo "key:$*" >> "$TRACE"\nexit 4\n')
+            agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\nexit 4\n')
             krb = write_executable(bindir / "krb", 'echo "krb:$*" >> "$TRACE"\n')
             nersc = write_executable(bindir / "nersc", 'echo "nersc:$*" >> "$TRACE"\n')
             env.update({
-                "REMOTE_ACCESS_SDF_KEY_HELPER": str(key),
+                "REMOTE_ACCESS_AGENT_HELPER": str(agent),
                 "REMOTE_ACCESS_KRB_HELPER": str(krb),
                 "REMOTE_ACCESS_NERSC_HELPER": str(nersc),
             })
 
             result = subprocess.run(
-                [ROOT / "bin/renew_remote_access", "--status", "--with-nersc"], env=env
+                [
+                    ROOT / "bin/renew_remote_access",
+                    "--status",
+                    "--with-ssh-agent",
+                    "--with-nersc",
+                ],
+                env=env,
             )
             self.assertEqual(result.returncode, 1)
             self.assertEqual(
                 trace.read_text().splitlines(),
-                ["key:--status", "krb:--status", "nersc:--status"],
+                ["agent:--status", "krb:--status", "nersc:--status"],
             )
 
-    def test_encrypted_sdf_key_calls_agent_before_registration(self):
+    def test_psbuild_remote_workflow_has_no_agent_stage(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = pathlib.Path(raw)
+            bindir, trace, env = self.base_env(temp)
+            agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\n')
+            krb = write_executable(bindir / "krb", 'echo "krb:$*" >> "$TRACE"\n')
+            env.update({
+                "REMOTE_ACCESS_AGENT_HELPER": str(agent),
+                "REMOTE_ACCESS_KRB_HELPER": str(krb),
+            })
+
+            subprocess.run([ROOT / "bin/renew_remote_access"], env=env, check=True)
+            self.assertEqual(trace.read_text().splitlines(), ["krb:"])
+
+    def test_compat_encrypted_sdf_key_calls_agent_only(self):
         with tempfile.TemporaryDirectory() as raw:
             temp = pathlib.Path(raw)
             bindir, trace, env = self.base_env(temp)
@@ -149,30 +175,21 @@ class DailyAccessTests(unittest.TestCase):
             for name in ("id_ed25519", "id_ed25519.pub", "id_rsa", "id_rsa.pub"):
                 (ssh_dir / name).write_text("test\n")
             agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\n')
-            copy_id = write_executable(bindir / "copy-id", 'echo "copy:$*" >> "$TRACE"\n')
-            ssh = write_executable(bindir / "ssh", 'echo "ssh:$*" >> "$TRACE"\n')
             keygen = write_executable(bindir / "keygen", 'exit 1\n')
             env.update({
                 "HOME": str(home),
                 "SSH_AGENT_START_HELPER": str(agent),
-                "SDF_SSH_COPY_ID_COMMAND": str(copy_id),
-                "SDF_SSH_COMMAND": str(ssh),
                 "SDF_SSH_KEYGEN_COMMAND": str(keygen),
             })
 
             subprocess.run([ROOT / "bin/renew_sdf_key"], env=env, check=True)
             lines = trace.read_text().splitlines()
-            self.assertEqual(lines[0], f"agent:{ssh_dir / 'id_ed25519'}")
-            self.assertIn(f"-i {ssh_dir / 'id_ed25519.pub'}", lines[1])
-            self.assertIn("-o ControlMaster=no", lines[1])
-            self.assertIn("-o ControlPath=none", lines[1])
+            self.assertEqual(lines, [f"agent:{ssh_dir / 'id_ed25519'}"])
 
             trace.write_text("")
             subprocess.run([ROOT / "bin/renew_sdf_key", "--status"], env=env, check=True)
             lines = trace.read_text().splitlines()
-            self.assertEqual(lines[0], f"agent:--status {ssh_dir / 'id_ed25519'}")
-            self.assertIn("-o ControlMaster=no", lines[1])
-            self.assertIn("-o ControlPath=none", lines[1])
+            self.assertEqual(lines, [f"agent:--status {ssh_dir / 'id_ed25519'}"])
 
     def test_unencrypted_rsa_key_skips_agent(self):
         with tempfile.TemporaryDirectory() as raw:
@@ -185,30 +202,21 @@ class DailyAccessTests(unittest.TestCase):
             key.write_text("private-placeholder\n")
             (ssh_dir / "id_rsa.pub").write_text("public-placeholder\n")
             agent = write_executable(bindir / "agent", 'echo "agent:$*" >> "$TRACE"\n')
-            copy_id = write_executable(bindir / "copy-id", 'echo "copy:$*" >> "$TRACE"\n')
-            ssh = write_executable(bindir / "ssh", 'echo "ssh:$*" >> "$TRACE"\n')
             keygen = write_executable(bindir / "keygen", 'exit 0\n')
             env.update({
                 "HOME": str(home),
                 "SSH_AGENT_START_HELPER": str(agent),
-                "SDF_SSH_COPY_ID_COMMAND": str(copy_id),
-                "SDF_SSH_COMMAND": str(ssh),
                 "SDF_SSH_KEYGEN_COMMAND": str(keygen),
             })
 
             result = subprocess.run(
                 [ROOT / "bin/renew_sdf_key"], env=env, text=True, capture_output=True, check=True
             )
-            lines = trace.read_text().splitlines()
-            self.assertEqual(len(lines), 1)
-            self.assertTrue(lines[0].startswith("copy:"))
-            self.assertIn("no agent is required", result.stdout)
+            self.assertFalse(trace.exists())
+            self.assertIn("no daily agent action is required", result.stdout)
 
-            trace.write_text("")
             subprocess.run([ROOT / "bin/renew_sdf_key", "--status"], env=env, check=True)
-            lines = trace.read_text().splitlines()
-            self.assertEqual(len(lines), 1)
-            self.assertTrue(lines[0].startswith("ssh:"))
+            self.assertFalse(trace.exists())
 
     def test_agent_status_accepts_loaded_selected_key(self):
         with tempfile.TemporaryDirectory() as raw:

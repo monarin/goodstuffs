@@ -33,10 +33,10 @@ This interactive workflow prepares each independent credential in order:
 
 - S3DF gateway registration on the Mac;
 - the Mac's NERSC `sshproxy` key through browser federated login;
-- the encrypted SDF SSH key and host-local Kerberos cache on `sdfiana`;
+- `sdfiana`'s encrypted local SSH key in its host-local agent, plus its
+  Kerberos cache;
 - `sdfiana`'s separate NERSC key through a URL opened on the Mac; and
-- the unencrypted SDF SSH key registration and host-local Kerberos cache on
-  `psbuildrc`.
+- the host-local Kerberos cache on `psbuildrc`.
 
 Use `renew_daily_access --status` for a read-only check. The renewal command
 keeps passphrase, password, and federated-login prompts attached to the current
@@ -55,17 +55,16 @@ On `sdfiana`, the individual commands are:
 
 ```bash
 ssh_agent_start
-renew_sdf_key
 renew_sdf_krb
 ```
 
 `ssh_agent_start` invokes `ssh-add`, which asks for the passphrase protecting
-`~/.ssh/id_ed25519`. `renew_sdf_key` calls that helper automatically before it
-refreshes the public-key registration on `jump.slac.stanford.edu`.
+`~/.ssh/id_ed25519`. The daily workflow does not copy this key anywhere; the
+Mac S3DF registration already provides access to `sdflogin`, `sdfiana`, and
+`psbuildrc`.
 
-On `psbuildrc`, `~/.ssh/id_rsa` is a separate unencrypted key. Run
-`renew_sdf_key` and `renew_sdf_krb`; the key-renewal helper detects that no
-passphrase is required and skips the agent.
+On `psbuildrc`, no daily SSH-key or agent action is required. Run only
+`renew_sdf_krb` when working with its host-local Kerberos ticket.
 
 `renew_sdf_krb` first tries password-free renewal; if the ticket is expired,
 non-renewable, or past its renewal deadline, it prompts for a fresh one.
