@@ -1,0 +1,13 @@
+[Unit]
+Description=Persistent SSH authentication agent
+
+[Service]
+Type=simple
+UMask=0077
+ExecStartPre=/usr/bin/rm -f %t/ssh-agent.socket
+ExecStart=/usr/bin/ssh-agent -D -a %t/ssh-agent.socket
+ExecStopPost=/usr/bin/rm -f %t/ssh-agent.socket
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

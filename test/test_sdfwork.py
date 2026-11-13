@@ -11,7 +11,14 @@ class SdfworkTests(unittest.TestCase):
     def test_shell_scripts_parse(self):
         for relative in (
             "bin/sdfwork",
+            "bin/renew_daily_access",
+            "bin/renew_nersc_key",
+            "bin/renew_remote_access",
             "bin/renew_s3df_key",
+            "bin/renew_s3df_krb",
+            "bin/renew_sdf_key",
+            "bin/renew_sdf_krb",
+            "bin/ssh_agent_start",
             "bin/install-sdfwork",
             "scripts/verify-s3df-hosts.sh",
         ):

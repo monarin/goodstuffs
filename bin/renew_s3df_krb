@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "renew_s3df_krb must run on the local Mac." >&2
+  exit 1
+fi
+
+usage() {
+  cat <<'EOF'
+Usage: renew_s3df_krb [--status]
+
+Renew the host-local Kerberos ticket on sdfiana and psbuildrc. A renewable
+ticket is refreshed without a password. If it is expired, non-renewable, or at
+the end of its renewal window, kinit prompts for a fresh password on that host.
+
+Options:
+  --status  Show both ticket caches without changing them.
+  -h, --help
+            Show this help.
+EOF
+}
+
+mode=renew
+case "${1-}" in
+  "") ;;
+  --status) mode=status ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+hosts=(sdfiana psbuildrc)
+ssh_options=(
+  -o BatchMode=yes
+  -o NumberOfPasswordPrompts=0
+  -o ConnectTimeout=20
+  -o ConnectionAttempts=1
+  -o GSSAPIDelegateCredentials=no
+)
+failed=0
+
+for host in "${hosts[@]}"; do
+  printf '\n===== %s =====\n' "$host"
+
+  if [[ "$mode" == status ]]; then
+    if ! ssh "${ssh_options[@]}" "$host" '
+      hostname -f
+      date -Is
+      if klist -s; then
+        klist -f
+      else
+        echo "No valid Kerberos ticket in the default cache." >&2
+        exit 1
+      fi
+    '; then
+      echo "renew_s3df_krb: could not verify $host" >&2
+      failed=1
+    fi
+    continue
+  fi
+
+  if ! ssh -tt "${ssh_options[@]}" "$host" '
+    hostname -f
+    if kinit -R >/dev/null 2>&1; then
+      echo "Renewed the existing Kerberos ticket without a password."
+    else
+      echo "A fresh Kerberos ticket is required."
+      echo "Enter the password for monarin@SLAC.STANFORD.EDU."
+      kinit -r 7d monarin@SLAC.STANFORD.EDU || exit $?
+    fi
+    klist -f
+  '; then
+    echo "renew_s3df_krb: renewal failed on $host" >&2
+    failed=1
+  fi
+done
+
+if [[ "$failed" -ne 0 ]]; then
+  echo >&2
+  echo "One or more hosts failed; successful hosts were still processed." >&2
+fi
+exit "$failed"

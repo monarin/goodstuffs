@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/.." && pwd)"
+unit_source="${repo_root}/config/systemd/user/ssh-agent.service"
+unit_target="${HOME}/.config/systemd/user/ssh-agent.service"
+socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
+lifetime="${SSH_AGENT_KEY_LIFETIME:-24h}"
+mode=start
+key="${SDF_SSH_KEY:-}"
+
+usage() {
+  cat <<'EOF'
+Usage: ssh_agent_start [--status] [KEY]
+
+Start/reuse the host-local systemd ssh-agent and load an encrypted SSH key.
+Without KEY, prefer ~/.ssh/id_ed25519 and then ~/.ssh/id_rsa.
+
+Options:
+  --status  Inspect the service, socket, and selected key without changing them.
+  -h, --help
+            Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --status)
+      mode=status
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --*)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "$key" ]]; then
+        echo "Only one key may be selected." >&2
+        exit 2
+      fi
+      key="$1"
+      ;;
+  esac
+  shift
+done
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  echo "ssh_agent_start is for the Linux SDF hosts, not the local Mac." >&2
+  exit 1
+fi
+
+if [[ -z "$key" ]]; then
+  for candidate in "${HOME}/.ssh/id_ed25519" "${HOME}/.ssh/id_rsa"; do
+    if [[ -r "$candidate" && -r "${candidate}.pub" ]]; then
+      key="$candidate"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$key" || ! -r "$key" || ! -r "${key}.pub" ]]; then
+  echo "No readable SSH private/public key pair was found." >&2
+  echo "Set SDF_SSH_KEY or pass the private-key path explicitly." >&2
+  exit 1
+fi
+
+fingerprint="$(ssh-keygen -lf "${key}.pub" 2>/dev/null | awk '{print $2}')"
+if [[ -z "$fingerprint" ]]; then
+  echo "Unable to read public-key fingerprint: ${key}.pub" >&2
+  exit 1
+fi
+
+if [[ "$mode" == status ]]; then
+  systemctl --user is-active --quiet ssh-agent.service || {
+    echo "ssh-agent service: stopped"
+    exit 1
+  }
+  [[ -S "$socket" ]] || {
+    echo "ssh-agent socket: missing ($socket)"
+    exit 1
+  }
+  echo "ssh-agent service: running"
+  echo "ssh-agent socket: $socket"
+  if SSH_AUTH_SOCK="$socket" ssh-add -l 2>/dev/null | awk '{print $2}' | grep -Fxq "$fingerprint"; then
+    echo "SSH key loaded: $key"
+  else
+    echo "SSH key not loaded: $key" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+if [[ ! -r "$unit_source" ]]; then
+  echo "Missing systemd unit template: $unit_source" >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$unit_target")"
+if [[ ! -e "$unit_target" ]] || ! cmp -s "$unit_source" "$unit_target"; then
+  install -m 644 "$unit_source" "$unit_target"
+  systemctl --user daemon-reload
+fi
+systemctl --user enable --now ssh-agent.service >/dev/null
+
+if [[ ! -S "$socket" ]]; then
+  echo "ssh-agent service is running but its socket is missing: $socket" >&2
+  exit 1
+fi
+
+export SSH_AUTH_SOCK="$socket"
+unset SSH_AGENT_PID
+
+if ssh-add -l 2>/dev/null | awk '{print $2}' | grep -Fxq "$fingerprint"; then
+  echo "SSH key is already loaded: $key"
+  exit 0
+fi
+
+echo "Loading encrypted SSH key for $lifetime: $key"
+ssh-add -t "$lifetime" "$key"

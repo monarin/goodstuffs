@@ -29,6 +29,9 @@ install_local() {
 install_local sdfwork
 install_local sdfwork-terminal
 install_local renew_s3df_key
+install_local renew_s3df_krb
+install_local renew_nersc_key
+install_local renew_daily_access
 
 ssh "$host" 'mkdir -p "$HOME/bin"'
 if ssh "$host" 'test -e "$HOME/bin/sdfwork-remote"'; then

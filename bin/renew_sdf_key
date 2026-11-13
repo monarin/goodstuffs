@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+mode=renew
+key="${SDF_SSH_KEY:-}"
+jump_user="${SDF_JUMP_USER:-monarin}"
+jump_host="${SDF_JUMP_HOST:-jump.slac.stanford.edu}"
+
+usage() {
+  cat <<'EOF'
+Usage: renew_sdf_key [--status] [KEY]
+
+Load the host's encrypted private key into its persistent agent and refresh the
+matching public-key registration on jump.slac.stanford.edu.
+
+Options:
+  --status  Verify the agent key and jump-host login without changing them.
+  -h, --help
+            Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --status)
+      mode=status
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --*)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      if [[ -n "$key" ]]; then
+        echo "Only one key may be selected." >&2
+        exit 2
+      fi
+      key="$1"
+      ;;
+  esac
+  shift
+done
+
+if [[ -z "$key" ]]; then
+  for candidate in "${HOME}/.ssh/id_ed25519" "${HOME}/.ssh/id_rsa"; do
+    if [[ -r "$candidate" && -r "${candidate}.pub" ]]; then
+      key="$candidate"
+      break
+    fi
+  done
+fi
+
+if [[ -z "$key" || ! -r "$key" || ! -r "${key}.pub" ]]; then
+  echo "No readable SSH private/public key pair was found." >&2
+  exit 1
+fi
+
+agent_args=("$key")
+if [[ "$mode" == status ]]; then
+  agent_args=(--status "$key")
+fi
+"${SSH_AGENT_START_HELPER:-${script_dir}/ssh_agent_start}" "${agent_args[@]}"
+
+export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
+unset SSH_AGENT_PID
+
+if [[ "$mode" == status ]]; then
+  "${SDF_SSH_COMMAND:-ssh}" \
+    -o BatchMode=yes \
+    -o NumberOfPasswordPrompts=0 \
+    -o ConnectTimeout=20 \
+    -o ConnectionAttempts=1 \
+    -o IdentitiesOnly=yes \
+    -i "$key" \
+    "${jump_user}@${jump_host}" true
+  echo "SDF jump-host key: accepted"
+  exit 0
+fi
+
+echo "Refreshing ${key}.pub on ${jump_user}@${jump_host}"
+"${SDF_SSH_COPY_ID_COMMAND:-ssh-copy-id}" -i "${key}.pub" "${jump_user}@${jump_host}"

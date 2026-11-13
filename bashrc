@@ -283,25 +283,41 @@ ssh_ipmi_tunnel() {
     ssh -N -L "${local_port}:${ipmi_host}:80" "$ssh_host"
 }
 
-# Refresh SSH key on jump host
+# Reuse the host-local systemd ssh-agent across shells on the same SDF node.
+_sdf_ssh_agent_socket="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
+if [[ -S "$_sdf_ssh_agent_socket" ]]; then
+    export SSH_AUTH_SOCK="$_sdf_ssh_agent_socket"
+    unset SSH_AGENT_PID
+fi
+unset _sdf_ssh_agent_socket
+
+ssh_agent_start() {
+    "$HOME/goodstuffs/bin/ssh_agent_start" "$@" || return $?
+    export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
+    unset SSH_AGENT_PID
+}
+
+renew_sdf_key() {
+    "$HOME/goodstuffs/bin/renew_sdf_key" "$@" || return $?
+    export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ssh-agent.socket"
+    unset SSH_AGENT_PID
+}
+
+renew_sdf_krb() {
+    "$HOME/goodstuffs/bin/renew_sdf_krb" "$@"
+}
+
+renew_nersc_key() {
+    "$HOME/goodstuffs/bin/renew_nersc_key" "$@"
+}
+
+renew_daily_access() {
+    "$HOME/goodstuffs/bin/renew_daily_access" "$@"
+}
+
+# Backward-compatible name for the old jump-host public-key refresh helper.
 fix_ssh_key() {
-  local key="${1:-$HOME/.ssh/id_ed25519}"
-  local pub="${key}.pub"
-  local user="monarin"
-  local host="jump.slac.stanford.edu"
-
-  if [[ ! -f "$key" || ! -f "$pub" ]]; then
-    echo "❌ Key or pubkey not found: $key / $pub"
-    return 1
-  fi
-
-  echo "🔑 Adding $key to ssh-agent..."
-  ssh-add "$key" || return 1
-
-  echo "📤 Copying public key to $user@$host..."
-  ssh-copy-id -i "$pub" "$user@$host" || return 1
-
-  echo "✅ SSH key refreshed on $host. Try again with: ssh psbuildrc"
+    renew_sdf_key "$@"
 }
 
 grx() {

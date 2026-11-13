@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+nersc_user="${NERSC_USER:-monarin}"
+mode=renew
+use_fedid=0
+no_browser=0
+verify=1
+
+usage() {
+  cat <<'EOF'
+Usage: renew_nersc_key [--fedid] [--no-browser] [--no-verify] [--status]
+
+Generate ~/.ssh/nersc with NERSC sshproxy and verify the perlmutter alias.
+Use --fedid for browser/Google authentication and --no-browser on a remote host
+to print a URL that can be opened on the local computer.
+
+Options:
+  --fedid       Use federated browser authentication.
+  --no-browser  Print the federated-login URL instead of opening a browser.
+  --no-verify   Skip the final noninteractive Perlmutter check.
+  --status      Check Perlmutter without changing the NERSC credential.
+  -h, --help    Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --fedid) use_fedid=1 ;;
+    --no-browser) no_browser=1 ;;
+    --no-verify) verify=0 ;;
+    --status) mode=status ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ "$no_browser" -eq 1 && "$use_fedid" -ne 1 ]]; then
+  echo "--no-browser requires --fedid." >&2
+  exit 2
+fi
+
+if [[ "$mode" == renew ]]; then
+  if ! command -v sshproxy >/dev/null 2>&1; then
+    echo "sshproxy is not installed. Use NERSC's signed package from https://docs.nersc.gov/connect/mfa/." >&2
+    exit 1
+  fi
+
+  sshproxy_args=(-o nersc)
+  if [[ "$use_fedid" -eq 1 ]]; then
+    sshproxy_args=(-f -o nersc)
+    if [[ "$no_browser" -eq 1 ]]; then
+      sshproxy_args=(-f -b -o nersc)
+    fi
+  else
+    sshproxy_args=(-u "$nersc_user" -o nersc)
+  fi
+  sshproxy "${sshproxy_args[@]}"
+  chmod 600 "${HOME}/.ssh/nersc" 2>/dev/null || true
+fi
+
+if [[ "$verify" -eq 1 ]]; then
+  ssh \
+    -o BatchMode=yes \
+    -o NumberOfPasswordPrompts=0 \
+    -o ConnectTimeout=20 \
+    -o ConnectionAttempts=1 \
+    -o ControlMaster=no \
+    -o ControlPath=none \
+    perlmutter true
+  echo "Checking perlmutter... OK"
+fi

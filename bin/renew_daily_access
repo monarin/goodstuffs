@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "renew_daily_access must run on the local Mac." >&2
+  exit 1
+fi
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/.." && pwd)"
+mode=renew
+
+usage() {
+  cat <<'EOF'
+Usage: renew_daily_access [--status]
+
+Interactively prepare today's independent credentials on the Mac, sdfiana, and
+psbuildrc. This includes S3DF gateway access, both remote SSH-agent/key setups,
+both remote Kerberos caches, and NERSC sshproxy credentials on the Mac and
+sdfiana.
+
+Options:
+  --status  Check every credential without renewing or prompting.
+  -h, --help
+            Show this help.
+EOF
+}
+
+case "${1-}" in
+  "") ;;
+  --status) mode=status ;;
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+failed=0
+
+run_step() {
+  local label="$1"
+  shift
+  printf '\n===== %s =====\n' "$label"
+  if ! "$@"; then
+    echo "FAILED: $label" >&2
+    failed=1
+  fi
+}
+
+ssh_command="${DAILY_ACCESS_SSH:-ssh}"
+remote_root="${DAILY_ACCESS_REMOTE_ROOT:-\$HOME/goodstuffs}"
+remote_status_arg=""
+if [[ "$mode" == status ]]; then
+  remote_status_arg="--status"
+fi
+
+if [[ "$mode" == status ]]; then
+  run_step "Mac S3DF access" "${DAILY_ACCESS_S3DF_VERIFY_HELPER:-${repo_root}/scripts/verify-s3df-hosts.sh}"
+  run_step "Mac NERSC access" "${DAILY_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --status
+else
+  run_step "Mac S3DF access" "${DAILY_ACCESS_S3DF_HELPER:-${script_dir}/renew_s3df_key}"
+  run_step "Mac NERSC access" "${DAILY_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --fedid
+fi
+
+run_step "sdfiana daily access" \
+  "$ssh_command" -tt \
+  -o BatchMode=yes \
+  -o NumberOfPasswordPrompts=0 \
+  -o ConnectTimeout=20 \
+  sdfiana \
+  "${remote_root}/bin/renew_remote_access ${remote_status_arg} --with-nersc"
+
+run_step "psbuildrc daily access" \
+  "$ssh_command" -tt \
+  -o BatchMode=yes \
+  -o NumberOfPasswordPrompts=0 \
+  -o ConnectTimeout=20 \
+  psbuildrc \
+  "${remote_root}/bin/renew_remote_access ${remote_status_arg}"
+
+if [[ "$failed" -ne 0 ]]; then
+  echo >&2
+  echo "One or more daily access stages failed; successful stages were preserved." >&2
+fi
+exit "$failed"

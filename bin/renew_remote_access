@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+mode=renew
+with_nersc=0
+
+usage() {
+  cat <<'EOF'
+Usage: renew_remote_access [--status] [--with-nersc]
+
+Prepare this SDF host's encrypted SSH key and Kerberos ticket. On sdfiana, pass
+--with-nersc to also renew its separate Perlmutter credential through a printed
+federated-login URL.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --status) mode=status ;;
+    --with-nersc) with_nersc=1 ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+failed=0
+
+run_step() {
+  local label="$1"
+  shift
+  printf '\n===== %s =====\n' "$label"
+  if ! "$@"; then
+    echo "FAILED: $label" >&2
+    failed=1
+  fi
+}
+
+if [[ "$mode" == status ]]; then
+  run_step "SDF SSH key" "${REMOTE_ACCESS_SDF_KEY_HELPER:-${script_dir}/renew_sdf_key}" --status
+  run_step "SDF Kerberos" "${REMOTE_ACCESS_KRB_HELPER:-${script_dir}/renew_sdf_krb}" --status
+  if [[ "$with_nersc" -eq 1 ]]; then
+    run_step "NERSC from $(hostname -s)" "${REMOTE_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --status
+  fi
+else
+  run_step "SDF SSH key" "${REMOTE_ACCESS_SDF_KEY_HELPER:-${script_dir}/renew_sdf_key}"
+  run_step "SDF Kerberos" "${REMOTE_ACCESS_KRB_HELPER:-${script_dir}/renew_sdf_krb}"
+  if [[ "$with_nersc" -eq 1 ]]; then
+    run_step "NERSC from $(hostname -s)" "${REMOTE_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --fedid --no-browser
+  fi
+fi
+
+exit "$failed"
