@@ -305,6 +305,23 @@ class DailyAccessTests(unittest.TestCase):
             self.assertEqual(len(lines), 1)
             self.assertTrue(lines[0].startswith("ssh:"))
 
+            trace.write_text("")
+            result = subprocess.run(
+                [ROOT / "bin/renew_nersc_key", "--status", "--no-verify"], env=env
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(trace.read_text(), "")
+
+            write_executable(bindir / "ssh", 'echo "ssh:$*" >> "$TRACE"\nexit 7\n')
+            result = subprocess.run(
+                [ROOT / "bin/renew_nersc_key", "--status"],
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 7)
+            self.assertIn("FAILED (exit 7)", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

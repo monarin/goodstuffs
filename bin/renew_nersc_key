@@ -48,6 +48,11 @@ if [[ "$no_browser" -eq 1 && "$use_fedid" -ne 1 ]]; then
   exit 2
 fi
 
+if [[ "$mode" == status && "$verify" -ne 1 ]]; then
+  echo "--status cannot be combined with --no-verify." >&2
+  exit 2
+fi
+
 if [[ "$mode" == renew ]]; then
   if ! command -v sshproxy >/dev/null 2>&1; then
     echo "sshproxy is not installed. Use NERSC's signed package from https://docs.nersc.gov/connect/mfa/." >&2
@@ -68,13 +73,19 @@ if [[ "$mode" == renew ]]; then
 fi
 
 if [[ "$verify" -eq 1 ]]; then
-  ssh \
+  printf 'Checking perlmutter... '
+  if ssh \
     -o BatchMode=yes \
     -o NumberOfPasswordPrompts=0 \
     -o ConnectTimeout=20 \
     -o ConnectionAttempts=1 \
     -o ControlMaster=no \
     -o ControlPath=none \
-    perlmutter true
-  echo "Checking perlmutter... OK"
+    perlmutter true; then
+    echo "OK"
+  else
+    status=$?
+    echo "FAILED (exit $status)" >&2
+    exit "$status"
+  fi
 fi
