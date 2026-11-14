@@ -1,10 +1,10 @@
 {
   "scope": "Mac NERSC terminal authentication",
-  "phase": "response",
+  "phase": "review",
   "base_sha": "256aa56d79b20cba1a31e06a9082fcfb40198ed2",
   "implementation_sha": "66fe9d2e8df0c7a7637aa79065249406ae28ec8d",
-  "reviewed_sha": "66fe9d2e8df0c7a7637aa79065249406ae28ec8d",
-  "round": 1,
+  "reviewed_sha": "a1b29a45f7a4e2ec237a570dd97c68f38e455ea9",
+  "round": 2,
   "round_limit": 3,
   "checks": {
     "unit_tests": "17 passed",
@@ -12,6 +12,6 @@
     "skill_links": "passed",
     "skill_validator": "not run: default Python lacks PyYAML"
   },
-  "unresolved_findings": ["R1"],
+  "unresolved_findings": [],
   "artifact_path": "/private/tmp/goodstuffs-mac-nersc-terminal-auth-review"
 }
