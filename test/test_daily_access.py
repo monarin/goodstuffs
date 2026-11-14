@@ -96,7 +96,7 @@ class DailyAccessTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             lines = trace.read_text().splitlines()
             self.assertEqual(len(lines), 4)
-            self.assertEqual(lines[1], "nersc:--fedid")
+            self.assertEqual(lines[1], "nersc:")
             self.assertIn("sdfiana", lines[2])
             self.assertIn("psbuildrc", lines[3])
 

@@ -15,7 +15,7 @@ usage() {
 Usage: renew_daily_access [--status]
 
 Interactively prepare today's independent credentials on the Mac, sdfiana, and
-psbuildrc. This includes S3DF gateway access, both remote SSH-agent/key setups,
+psbuildrc. This includes S3DF gateway access, sdfiana's SSH-agent/key setup,
 both remote Kerberos caches, and NERSC sshproxy credentials on the Mac and
 sdfiana.
 
@@ -63,7 +63,7 @@ if [[ "$mode" == status ]]; then
   run_step "Mac NERSC access" "${DAILY_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --status
 else
   run_step "Mac S3DF access" "${DAILY_ACCESS_S3DF_HELPER:-${script_dir}/renew_s3df_key}"
-  run_step "Mac NERSC access" "${DAILY_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}" --fedid
+  run_step "Mac NERSC access" "${DAILY_ACCESS_NERSC_HELPER:-${script_dir}/renew_nersc_key}"
 fi
 
 run_step "sdfiana daily access" \

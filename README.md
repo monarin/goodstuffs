@@ -32,7 +32,7 @@ renew_daily_access
 This interactive workflow prepares each independent credential in order:
 
 - S3DF gateway registration on the Mac;
-- the Mac's NERSC `sshproxy` key through browser federated login;
+- the Mac's NERSC `sshproxy` key through password plus OTP entered in Terminal;
 - `sdfiana`'s encrypted local SSH key in its host-local agent, plus its
   Kerberos cache;
 - `sdfiana`'s separate NERSC key through password plus OTP entered in the
@@ -40,8 +40,8 @@ This interactive workflow prepares each independent credential in order:
 - the host-local Kerberos cache on `psbuildrc`.
 
 Use `renew_daily_access --status` for a read-only check. The renewal command
-keeps passphrase, password, and federated-login prompts attached to the current
-terminal and continues checking later independent stages after a failure.
+keeps passphrase and password-plus-OTP prompts attached to the current terminal
+and continues checking later independent stages after a failure.
 
 The Mac-only S3DF gateway step remains available separately:
 
@@ -77,9 +77,9 @@ any host-local changes, then start a new shell (or source `~/goodstuffs/bashrc`)
 before using the command from the Mac.
 
 NERSC `sshproxy` is installed separately from the official packages at
-<https://portal.nersc.gov/cfs/mfa/>. Run `renew_nersc_key --fedid` on the Mac,
-or run `renew_nersc_key` in an interactive `sdfiana` terminal and enter the
-NERSC password plus OTP there. The two machines receive separate credentials.
+<https://portal.nersc.gov/cfs/mfa/>. Run `renew_nersc_key` on the Mac and in an
+interactive `sdfiana` terminal, entering NERSC password plus OTP independently
+for each. The two machines receive separate credentials.
 
 ## SDF development workspace
 
