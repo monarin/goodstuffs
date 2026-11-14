@@ -1,10 +1,10 @@
 {
   "scope": "Mac NERSC terminal authentication",
-  "phase": "review",
+  "phase": "complete",
   "base_sha": "256aa56d79b20cba1a31e06a9082fcfb40198ed2",
   "implementation_sha": "66fe9d2e8df0c7a7637aa79065249406ae28ec8d",
-  "reviewed_sha": "a1b29a45f7a4e2ec237a570dd97c68f38e455ea9",
-  "round": 2,
+  "reviewed_sha": "b3b30a06296c6763a47110cd39f40a3839be9bf9",
+  "round": 3,
   "round_limit": 3,
   "checks": {
     "unit_tests": "17 passed",
