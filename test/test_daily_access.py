@@ -282,6 +282,43 @@ class DailyAccessTests(unittest.TestCase):
             self.assertIn("systemctl:--user enable --now ssh-agent.service", lines)
             self.assertIn(f"ssh-add:-t 24h {key}", lines)
 
+    def test_agent_renew_refreshes_loaded_key_lifetime(self):
+        with tempfile.TemporaryDirectory() as raw:
+            temp = pathlib.Path(raw)
+            bindir, trace, env = self.base_env(temp)
+            home = temp / "home"
+            ssh_dir = home / ".ssh"
+            runtime = temp / "runtime"
+            ssh_dir.mkdir(parents=True)
+            runtime.mkdir()
+            key = ssh_dir / "id_ed25519"
+            key.write_text("private-placeholder\n")
+            (ssh_dir / "id_ed25519.pub").write_text("public-placeholder\n")
+            write_executable(bindir / "uname", 'echo Linux\n')
+            write_executable(bindir / "ssh-keygen", 'echo "256 FP test"\n')
+            write_executable(bindir / "systemctl", 'echo "systemctl:$*" >> "$TRACE"\n')
+            write_executable(
+                bindir / "ssh-add",
+                'if [[ "${1-}" == "-l" ]]; then echo "256 FP test"; exit 0; fi\n'
+                'echo "ssh-add:$*" >> "$TRACE"\n',
+            )
+            env.update({"HOME": str(home), "XDG_RUNTIME_DIR": str(runtime)})
+
+            sock = socket.socket(socket.AF_UNIX)
+            try:
+                sock.bind(str(runtime / "ssh-agent.socket"))
+                result = subprocess.run(
+                    [ROOT / "bin/ssh_agent_start"],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                )
+            finally:
+                sock.close()
+            self.assertIn(f"Refreshing encrypted SSH key for 24h: {key}", result.stdout)
+            self.assertIn(f"ssh-add:-t 24h {key}", trace.read_text().splitlines())
+
     def test_kerberos_renew_falls_back_and_status_never_calls_kinit(self):
         with tempfile.TemporaryDirectory() as raw:
             temp = pathlib.Path(raw)

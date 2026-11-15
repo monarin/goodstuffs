@@ -59,9 +59,10 @@ ssh_agent_start
 renew_sdf_krb
 ```
 
-`ssh_agent_start` invokes `ssh-add`, which asks for the passphrase protecting
-`~/.ssh/id_ed25519`. The daily workflow does not copy this key anywhere; the
-Mac S3DF registration already provides access to `sdflogin`, `sdfiana`, and
+`ssh_agent_start` invokes `ssh-add -t 24h`, which asks for the passphrase
+protecting `~/.ssh/id_ed25519` and resets its lifetime even when the identity is
+already loaded. The daily workflow does not copy this key anywhere; the Mac
+S3DF registration already provides access to `sdflogin`, `sdfiana`, and
 `psbuildrc`.
 
 On `psbuildrc`, no daily SSH-key or agent action is required. Run only

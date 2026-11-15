@@ -116,9 +116,8 @@ export SSH_AUTH_SOCK="$socket"
 unset SSH_AGENT_PID
 
 if ssh-add -l 2>/dev/null | awk '{print $2}' | grep -Fxq "$fingerprint"; then
-  echo "SSH key is already loaded: $key"
-  exit 0
+  echo "Refreshing encrypted SSH key for $lifetime: $key"
+else
+  echo "Loading encrypted SSH key for $lifetime: $key"
 fi
-
-echo "Loading encrypted SSH key for $lifetime: $key"
 ssh-add -t "$lifetime" "$key"
